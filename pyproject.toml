@@ -1,0 +1,75 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gwanjong-mcp"
+version = "0.1.0"
+description = "Stateful Pipeline MCP 서버 - 최소 토큰으로 개발자 커뮤니티 활동을 수행하는 AI 소셜 에이전트"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Son Seong Joon", email = "sonsj97@plateer.com" },
+]
+keywords = ["mcp", "social", "agent", "devto", "bluesky", "twitter", "reddit"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+]
+
+dependencies = [
+    "mcp-pipeline>=0.1.0",
+    "devhub[all]>=0.1.0",
+    "graph-tool-call>=0.1.0",
+]
+
+[project.optional-dependencies]
+devto = []  # httpx만 필요, 코어에 포함
+bluesky = ["atproto>=0.0.55"]
+twitter = ["tweepy>=4.14.0"]
+reddit = ["asyncpraw>=7.7.0"]
+all = [
+    "gwanjong-mcp[devto]",
+    "gwanjong-mcp[bluesky]",
+    "gwanjong-mcp[twitter]",
+    "gwanjong-mcp[reddit]",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "mypy>=1.8.0",
+    "ruff>=0.5.0",
+]
+
+[project.scripts]
+gwanjong-mcp = "gwanjong_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/SonAIengine/gwanjong-mcp"
+Repository = "https://github.com/SonAIengine/gwanjong-mcp"
+Issues = "https://github.com/SonAIengine/gwanjong-mcp/issues"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
