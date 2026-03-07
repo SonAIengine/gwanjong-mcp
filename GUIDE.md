@@ -56,10 +56,9 @@ scout 키워드 예시:
 ```
 
 좋은 댓글:
-> "저도 비슷한 니즈가 있어서 ku-portal-mcp를 만들었습니다.
-> 건국대 포털을 MCP 서버로 감싸서 Claude Code에서 수강신청, 성적 조회 등을
-> 자연어로 할 수 있게 했어요. AT Protocol 기반이라 확장도 쉽습니다.
-> 혹시 관심 있으시면 GitHub에 올려뒀습니다: (링크)"
+> "저도 비슷한 니즈가 있어서 직접 MCP 서버를 만들었습니다.
+> 대학 포털을 MCP 서버로 감싸서 Claude Code에서 수강신청, 성적 조회 등을
+> 자연어로 할 수 있게 했어요. 혹시 관심 있으시면 GitHub에 올려뒀습니다: (링크)"
 
 나쁜 댓글:
 > "제 프로젝트 ku-portal-mcp를 사용해보세요! 최고입니다! ⭐ 부탁드립니다!"
@@ -135,22 +134,18 @@ strike action="post" 사용
 
 ## 홍보할 프로젝트
 
-### 메인 프로젝트
-| 프로젝트 | 한 줄 소개 | 대상 커뮤니티 |
-|----------|-----------|--------------|
-| **ku-portal-mcp** | 건국대 포털을 MCP 서버로 — Claude에서 수강/성적/도서관 | r/MCP, MCP 관련 글 |
-| **devhub** | Dev.to/Bluesky/Twitter/Reddit 통합 async 클라이언트 | Python/API 관련 글 |
-| **mcp-pipeline** | Stateful MCP 프레임워크 (stores/requires 체이닝) | MCP 개발자 |
-| **gwanjong-mcp** | AI 소셜 에이전트 MCP 서버 | AI 에이전트 관련 글 |
+`~/.gwanjong/profile.json`에서 로드. 프로젝트 목록, 개인 브랜드 정보, 타겟 키워드 등을 관리.
 
-### 개인 브랜드
-| 항목 | 내용 |
-|------|------|
-| 이름 | Son Seong Joon |
-| GitHub | https://github.com/SonAIengine |
-| 블로그 | https://sonblog.pages.dev |
-| 포지셔닝 | AI/LLM 인프라 엔지니어, MCP 생태계 기여자 |
-| 전문 분야 | MCP 서버 개발, 멀티 플랫폼 API 통합, K8s/MSA 인프라 |
+```json
+{
+  "name": "...",
+  "github": "...",
+  "blog": "...",
+  "projects": [
+    {"name": "my-project", "description": "...", "keywords": ["..."]}
+  ]
+}
+```
 
 ---
 
