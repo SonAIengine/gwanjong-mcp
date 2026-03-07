@@ -28,7 +28,7 @@ classifiers = [
 dependencies = [
     "mcp-pipeline>=0.1.0",
     "devhub[all]>=0.1.0",
-    "graph-tool-call>=0.1.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
