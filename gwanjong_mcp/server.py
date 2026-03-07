@@ -67,7 +67,7 @@ async def gwanjong_setup(
 # ── scout ──
 
 
-@server.tool(stores="opportunities")
+@server.tool
 async def gwanjong_scout(
     topic: str,
     platforms: list[str] | None = None,
@@ -76,9 +76,7 @@ async def gwanjong_scout(
 ) -> dict[str, Any]:
     """개발자 커뮤니티에서 관련 토론 정찰. 점수화된 상위 기회를 반환."""
     opportunities, response = await pipeline.scout(topic, platforms, limit)
-    # stores="opportunities" → 반환값이 state.opportunities에 자동 저장
-    # 그런데 우리는 dict 전체가 아닌 opportunities만 저장하고 싶음
-    # → state에 직접 저장하고, 반환값은 압축 응답
+    # state에 직접 저장 (stores 데코레이터 대신 수동 — 반환값은 압축 응답이므로)
     if state is not None:
         state.opportunities = opportunities
     return response
@@ -87,7 +85,7 @@ async def gwanjong_scout(
 # ── draft ──
 
 
-@server.tool(stores="contexts", requires="opportunities")
+@server.tool(requires="opportunities")
 async def gwanjong_draft(
     opportunity_id: str,
     state: GwanjongState | None = None,

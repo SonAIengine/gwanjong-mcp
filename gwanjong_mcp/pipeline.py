@@ -180,6 +180,7 @@ async def draft(
     tone = _analyze_tone(comment_bodies)
     approach = _suggest_approach(opportunity, len(comments))
     avoid = _check_avoid(opportunity)
+    writing_guide = _build_writing_guide(opportunity, tone)
 
     ctx = DraftContext(
         opportunity_id=opportunity.id,
@@ -199,6 +200,7 @@ async def draft(
         "top_comments": ctx.top_comments,
         "tone": ctx.tone,
         "suggested_approach": ctx.suggested_approach,
+        "writing_guide": writing_guide,
         "avoid": ctx.avoid,
     }
 
@@ -312,8 +314,53 @@ def _check_avoid(opp: Opportunity) -> list[str]:
     """주의사항 생성."""
     avoid: list[str] = []
     if opp.platform == "reddit":
-        avoid.append("직접 링크 자제 — 서브레딧마다 셀프 홍보 규칙이 다름")
+        avoid.append("No direct links — self-promo rules vary by subreddit")
     if opp.platform == "twitter":
-        avoid.append("280자 제한 — 핵심만 간결하게")
-    avoid.append("과도한 홍보 톤 자제 — 자연스러운 대화체로")
+        avoid.append("280 char limit — keep it tight")
+    avoid.extend(WRITING_AVOID)
     return avoid
+
+
+# AI가 흔히 쓰는 패턴 — 반드시 피할 것
+WRITING_AVOID = [
+    "No generic praise openers ('This is amazing!', 'Great article!', 'Love this!')",
+    "No 'Curious about...' or 'I'd love to hear...' — these scream AI",
+    "No formulaic structure: compliment → personal experience → question",
+    "No words: 'fascinating', 'insightful', 'resonates', 'game-changer', 'deep dive', 'kudos'",
+    "No hedging ('I think', 'In my experience', 'It might be worth') — just say it",
+    "Don't always end with a question — sometimes just make a statement",
+    "No bullet points or numbered lists in comments — people don't do that",
+]
+
+
+def _build_writing_guide(opp: Opportunity, tone: str) -> str:
+    """사람처럼 쓰기 위한 구체적 가이드."""
+    guide = (
+        "Write like a real developer leaving a comment, not an AI assistant.\n"
+        "\n"
+        "HOW REAL COMMENTS SOUND:\n"
+        "- Short. 2-4 sentences max. Sometimes just one line.\n"
+        "- Start mid-thought, like you're already in the conversation. "
+        "('oh man, the knowledge graph part — ' not 'This is a really interesting approach to...')\n"
+        "- Be specific. React to ONE concrete detail, not the whole post.\n"
+        "- Typos and casual grammar are fine. Contractions always.\n"
+        "- Share a quick personal detail if relevant ('I tried something similar with X and it broke in Y way')\n"
+        "- Disagreement is OK. 'idk if that scales though' is more human than endless praise.\n"
+        "- Match the energy of existing comments — if they're casual, be casual.\n"
+    )
+
+    if tone == "technical":
+        guide += "- This thread is technical. Drop specific terms, reference concrete tradeoffs.\n"
+    elif tone == "positive":
+        guide += "- Thread is upbeat but don't pile on generic praise. Add substance.\n"
+
+    if opp.platform == "devto":
+        guide += "- Dev.to is casual-professional. Think 'smart coworker at lunch', not conference talk.\n"
+    elif opp.platform == "reddit":
+        guide += "- Reddit is blunt. No fluff. Get to the point or get downvoted.\n"
+    elif opp.platform == "twitter":
+        guide += "- Twitter is punchy. One sharp observation > a polished paragraph.\n"
+    elif opp.platform == "bluesky":
+        guide += "- Bluesky is conversational. Think quote-tweet energy.\n"
+
+    return guide
