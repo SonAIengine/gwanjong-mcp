@@ -92,7 +92,7 @@ python -m gwanjong_mcp           # 모듈 실행
 
 ## 알려진 이슈
 
-- devhub bluesky.get_trending: q="*" 타임아웃 → search로 대체 필요
-- devhub twitter: Bearer Token 미지원 → 검색 시 401 (어댑터 수정 필요)
+- devhub bluesky.get_trending: ✅ whats-hot 피드로 수정 완료
+- devhub twitter: ✅ Bearer Token 지원 완료 (TWITTER_BEARER_TOKEN 환경변수)
 - twikit: 서버에서 Cloudflare 차단 → tweepy + Bearer Token으로 대체
 - Dev.to API: DELETE 미지원 (unpublish만 가능)
