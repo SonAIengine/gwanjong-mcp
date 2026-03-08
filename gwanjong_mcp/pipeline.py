@@ -31,6 +31,13 @@ def _is_spam(post: Post) -> bool:
     return hits >= 3
 
 
+def _is_reply_restricted(post: Post) -> bool:
+    """Twitter 답글 제한 트윗 필터링. 다른 플랫폼은 항상 False."""
+    if post.platform != "twitter":
+        return False
+    return post.raw.get("reply_settings", "everyone") != "everyone"
+
+
 def _score_relevance(post: Post, topic: str) -> float:
     """게시글의 주제 관련성 점수 (0.0 ~ 1.0). 플랫폼별 가중치 적용."""
     score = 0.0
@@ -151,7 +158,7 @@ async def scout(
     seen: set[str] = set()
     all_posts: list[Post] = []
     for post in trending + searched:
-        if post.url not in seen and not _is_spam(post):
+        if post.url not in seen and not _is_spam(post) and not _is_reply_restricted(post):
             seen.add(post.url)
             all_posts.append(post)
 
