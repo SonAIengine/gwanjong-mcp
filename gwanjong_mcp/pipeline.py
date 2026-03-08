@@ -17,6 +17,20 @@ from .types import ActionRecord, DraftContext, Opportunity
 logger = logging.getLogger(__name__)
 
 
+_SPAM_KEYWORDS = {
+    "whale", "token", "$", "sol", "solana", "nft", "airdrop",
+    "pump", "moon", "degen", "buy", "sell", "market cap",
+    "ca:", "txs", "mcap", "🐳", "💎", "🚀",
+}
+
+
+def _is_spam(post: Post) -> bool:
+    """크립토/스팸 트윗 필터링."""
+    text = f"{post.title} {post.body}".lower()
+    hits = sum(1 for kw in _SPAM_KEYWORDS if kw in text)
+    return hits >= 3
+
+
 def _score_relevance(post: Post, topic: str) -> float:
     """게시글의 주제 관련성 점수 (0.0 ~ 1.0). 플랫폼별 가중치 적용."""
     score = 0.0
@@ -133,11 +147,11 @@ async def scout(
             hub.search(topic, limit=20),
         )
 
-    # 중복 제거 (URL 기준)
+    # 중복 제거 (URL 기준) + 스팸 필터
     seen: set[str] = set()
     all_posts: list[Post] = []
     for post in trending + searched:
-        if post.url not in seen:
+        if post.url not in seen and not _is_spam(post):
             seen.add(post.url)
             all_posts.append(post)
 
@@ -155,7 +169,7 @@ async def scout(
             id=opp_id,
             platform=post.platform,
             post_id=post.id,
-            title=post.title[:80] if post.title else "(no title)",
+            title=(post.title or post.body or "")[:80] or "(no title)",
             url=post.url,
             relevance=round(score, 2),
             comments_count=post.comments_count,
