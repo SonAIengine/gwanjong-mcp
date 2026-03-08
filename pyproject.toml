@@ -36,11 +36,15 @@ devto = []  # httpx만 필요, 코어에 포함
 bluesky = ["atproto>=0.0.55"]
 twitter = ["tweepy>=4.14.0"]
 reddit = ["asyncpraw>=7.7.0"]
+autonomous = ["anthropic>=0.40.0"]
+dashboard = ["aiohttp>=3.9.0"]
 all = [
     "gwanjong-mcp[devto]",
     "gwanjong-mcp[bluesky]",
     "gwanjong-mcp[twitter]",
     "gwanjong-mcp[reddit]",
+    "gwanjong-mcp[autonomous]",
+    "gwanjong-mcp[dashboard]",
 ]
 dev = [
     "pytest>=8.0.0",
@@ -51,6 +55,8 @@ dev = [
 
 [project.scripts]
 gwanjong-mcp = "gwanjong_mcp.server:main"
+gwanjong-daemon = "gwanjong_mcp.daemon:main"
+gwanjong-dashboard = "gwanjong_mcp.dashboard:main"
 
 [project.urls]
 Homepage = "https://github.com/SonAIengine/gwanjong-mcp"

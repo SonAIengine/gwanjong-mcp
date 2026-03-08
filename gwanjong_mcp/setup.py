@@ -6,62 +6,14 @@ import os
 from pathlib import Path
 from typing import Any
 
+from devhub.registry import get_adapter_class, get_adapter_classes
+
 ENV_PATH = Path.home() / ".gwanjong" / ".env"
 
-PLATFORM_GUIDES: dict[str, dict[str, Any]] = {
-    "devto": {
-        "url": "https://dev.to/settings/extensions",
-        "steps": [
-            "1. https://dev.to/settings/extensions 접속",
-            "2. 'DEV API Keys' 섹션에서 description 입력",
-            "3. 'Generate API Key' 클릭",
-            "4. 생성된 API Key 복사",
-        ],
-        "required_keys": ["DEVTO_API_KEY"],
-    },
-    "bluesky": {
-        "url": "https://bsky.app/settings",
-        "steps": [
-            "1. https://bsky.app/settings 접속",
-            "2. 'App Passwords' 클릭",
-            "3. 앱 이름 입력 (예: gwanjong) 후 생성",
-            "4. handle (예: user.bsky.social)과 생성된 앱 비밀번호 복사",
-        ],
-        "required_keys": ["BLUESKY_HANDLE", "BLUESKY_APP_PASSWORD"],
-    },
-    "twitter": {
-        "url": "https://developer.x.com/en/portal/dashboard",
-        "steps": [
-            "1. https://developer.x.com/en/portal/dashboard 접속",
-            "2. 프로젝트/앱 생성 (Free tier 가능)",
-            "3. 'Keys and Tokens' 탭에서 API Key, API Secret 복사",
-            "4. 'Authentication Tokens'에서 Access Token, Access Secret 생성 후 복사",
-        ],
-        "required_keys": [
-            "TWITTER_API_KEY",
-            "TWITTER_API_SECRET",
-            "TWITTER_ACCESS_TOKEN",
-            "TWITTER_ACCESS_SECRET",
-        ],
-    },
-    "reddit": {
-        "url": "https://www.reddit.com/prefs/apps",
-        "steps": [
-            "1. https://www.reddit.com/prefs/apps 접속",
-            "2. 'create another app' 클릭",
-            "3. name: gwanjong, type: script 선택",
-            "4. redirect uri: http://localhost:8080 입력",
-            "5. 생성 후 client_id (앱 이름 아래 문자열)와 secret 복사",
-            "6. Reddit 계정의 username, password도 필요",
-        ],
-        "required_keys": [
-            "REDDIT_CLIENT_ID",
-            "REDDIT_CLIENT_SECRET",
-            "REDDIT_USERNAME",
-            "REDDIT_PASSWORD",
-        ],
-    },
-}
+
+def _get_guides() -> dict[str, dict[str, Any]]:
+    """레지스트리에 등록된 모든 어댑터에서 setup_guide를 동적으로 수집."""
+    return {name: cls.setup_guide() for name, cls in get_adapter_classes().items()}
 
 
 def _load_env() -> dict[str, str]:
@@ -87,23 +39,18 @@ def _save_env(env: dict[str, str]) -> None:
 
 
 def check_platforms() -> dict[str, Any]:
-    """각 플랫폼의 설정 상태를 확인."""
+    """각 플랫폼의 설정 상태를 확인 (레지스트리에서 동적 탐지)."""
     env = _load_env()
-    # 환경변수도 함께 확인
-    merged = {**env}
-    for key in os.environ:
-        if any(key.startswith(p) for p in ("DEVTO_", "BLUESKY_", "TWITTER_", "REDDIT_")):
-            merged[key] = os.environ[key]
+    merged = {**os.environ, **env}
 
     configured: list[str] = []
     not_configured: list[str] = []
 
-    for platform, guide in PLATFORM_GUIDES.items():
-        required = guide["required_keys"]
+    for platform, guide in _get_guides().items():
+        required = guide.get("required_keys", [])
         if all(merged.get(k) for k in required):
             configured.append(platform)
         else:
-            missing = [k for k in required if not merged.get(k)]
             not_configured.append(platform)
 
     return {"configured": configured, "not_configured": not_configured}
@@ -111,23 +58,25 @@ def check_platforms() -> dict[str, Any]:
 
 def get_guide(platform: str) -> dict[str, Any]:
     """특정 플랫폼의 API 키 발급 안내를 반환."""
-    if platform not in PLATFORM_GUIDES:
-        return {"error": f"지원하지 않는 플랫폼: {platform}", "supported": list(PLATFORM_GUIDES)}
-    guide = PLATFORM_GUIDES[platform]
+    guides = _get_guides()
+    if platform not in guides:
+        return {"error": f"지원하지 않는 플랫폼: {platform}", "supported": list(guides)}
+    guide = guides[platform]
     return {
         "platform": platform,
-        "url": guide["url"],
-        "steps": guide["steps"],
-        "required_keys": guide["required_keys"],
+        "url": guide.get("url", ""),
+        "steps": guide.get("steps", []),
+        "required_keys": guide.get("required_keys", []),
     }
 
 
 def save_credentials(platform: str, credentials: dict[str, str]) -> dict[str, Any]:
     """API 키를 .env에 저장."""
-    if platform not in PLATFORM_GUIDES:
-        return {"error": f"지원하지 않는 플랫폼: {platform}"}
+    guides = _get_guides()
+    if platform not in guides:
+        return {"error": f"지원하지 않는 플랫폼: {platform}", "supported": list(guides)}
 
-    required = PLATFORM_GUIDES[platform]["required_keys"]
+    required = guides[platform].get("required_keys", [])
     missing = [k for k in required if k not in credentials or not credentials[k]]
     if missing:
         return {"error": f"누락된 키: {', '.join(missing)}", "required_keys": required}
@@ -144,20 +93,9 @@ def save_credentials(platform: str, credentials: dict[str, str]) -> dict[str, An
 
 async def test_connection(platform: str) -> dict[str, Any]:
     """플랫폼 연결 테스트 (get_trending limit=1)."""
-    from devhub.bluesky import Bluesky
-    from devhub.devto import DevTo
-    from devhub.reddit import Reddit
-    from devhub.twitter import Twitter
-
-    adapter_map = {
-        "devto": DevTo,
-        "bluesky": Bluesky,
-        "twitter": Twitter,
-        "reddit": Reddit,
-    }
-
-    cls = adapter_map.get(platform)
-    if cls is None:
+    try:
+        cls = get_adapter_class(platform)
+    except KeyError:
         return {"test": "fail", "message": f"지원하지 않는 플랫폼: {platform}"}
 
     if not cls.is_configured():

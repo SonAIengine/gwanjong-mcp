@@ -1,0 +1,14 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir aiohttp
+
+# dashboard + static만 복사 (나머지 모듈 불필요)
+COPY gwanjong_mcp/dashboard.py ./gwanjong_mcp/dashboard.py
+COPY gwanjong_mcp/static/ ./gwanjong_mcp/static/
+COPY gwanjong_mcp/__init__.py ./gwanjong_mcp/__init__.py
+
+EXPOSE 8585
+
+CMD ["python", "-m", "gwanjong_mcp.dashboard", "--port", "8585"]

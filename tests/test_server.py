@@ -19,10 +19,8 @@ def test_tools_registered():
 
 
 def test_tool_meta():
-    """stores/requires 메타데이터 확인."""
+    """requires 메타데이터 확인 (stores는 수동 저장이므로 선언 없음)."""
     meta = server._tool_meta
-    assert meta["gwanjong_scout"]["stores"] == ["opportunities"]
-    assert meta["gwanjong_draft"]["stores"] == ["contexts"]
     assert meta["gwanjong_draft"]["requires"] == ["opportunities"]
     assert meta["gwanjong_strike"]["requires"] == ["contexts"]
 

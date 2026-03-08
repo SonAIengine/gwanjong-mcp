@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gwanjong dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #e6edf3; --text2: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --purple: #bc8cff; --orange: #f0883e;
+    --devto: #3b49df; --bluesky: #0085ff; --twitter: #1da1f2; --reddit: #ff4500;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text);
+    padding: 20px; max-width: 1200px; margin: 0 auto;
+  }
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 20px; font-weight: 600; }
+  header h1 span { color: var(--accent); }
+  .meta { font-size: 12px; color: var(--text2); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .card h3 {
+    font-size: 13px; color: var(--text2); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 12px;
+  }
+  .pi { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .pi.devto { background: var(--devto); } .pi.bluesky { background: var(--bluesky); }
+  .pi.twitter { background: var(--twitter); } .pi.reddit { background: var(--reddit); }
+
+  /* Totals */
+  .totals { display: flex; gap: 24px; margin-bottom: 24px; flex-wrap: wrap; }
+  .total-item { text-align: center; }
+  .total-item .num { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .total-item .label { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+  /* Platform stats */
+  .stat-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { display: flex; align-items: center; font-size: 14px; }
+  .stat-values { display: flex; gap: 12px; font-size: 13px; }
+  .stat-values .today { color: var(--green); font-weight: 600; }
+  .stat-values .week { color: var(--text2); }
+  .stat-values .total { color: var(--text2); font-size: 12px; }
+
+  /* Rate limit */
+  .rate-item { margin-bottom: 12px; }
+  .rate-header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+  .rate-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .rate-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .rate-fill.low { background: var(--green); } .rate-fill.mid { background: var(--yellow); } .rate-fill.high { background: var(--red); }
+  .cooldown { font-size: 11px; margin-top: 3px; }
+  .cooldown.active { color: var(--yellow); }
+  .cooldown.ready { color: var(--green); }
+
+  /* Stacked chart */
+  .chart { display: flex; align-items: flex-end; gap: 6px; height: 100px; padding-top: 8px; }
+  .chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; }
+  .chart-stack { width: 100%; max-width: 40px; margin-top: auto; display: flex; flex-direction: column-reverse; }
+  .chart-seg { min-height: 0; transition: height 0.3s; }
+  .chart-seg.devto { background: var(--devto); }
+  .chart-seg.bluesky { background: var(--bluesky); }
+  .chart-seg.twitter { background: var(--twitter); }
+  .chart-seg.reddit { background: var(--reddit); }
+  .chart-seg:first-child { border-radius: 0 0 3px 3px; }
+  .chart-seg:last-child { border-radius: 3px 3px 0 0; }
+  .chart-label { font-size: 10px; color: var(--text2); margin-top: 4px; }
+  .chart-count { font-size: 10px; color: var(--text2); margin-bottom: 2px; }
+  .chart-legend { display: flex; gap: 12px; margin-top: 8px; font-size: 11px; color: var(--text2); }
+  .chart-legend span { display: flex; align-items: center; gap: 4px; }
+
+  /* Engagement */
+  .eng-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .eng-row:last-child { border-bottom: none; }
+  .eng-label { font-size: 14px; display: flex; align-items: center; }
+  .eng-stats { display: flex; gap: 16px; font-size: 12px; }
+  .eng-rate { font-weight: 700; font-size: 14px; }
+  .eng-rate.good { color: var(--green); }
+  .eng-rate.mid { color: var(--yellow); }
+  .eng-rate.none { color: var(--text2); }
+  .eng-detail { color: var(--text2); }
+
+  /* Replies */
+  .reply-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .reply-item:last-child { border-bottom: none; }
+  .reply-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .reply-author { font-weight: 600; font-size: 13px; color: var(--accent); }
+  .reply-time { font-size: 11px; color: var(--text2); }
+  .reply-body {
+    font-size: 13px; color: var(--text); line-height: 1.5;
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .reply-link { font-size: 11px; color: var(--text2); text-decoration: none; margin-top: 4px; display: inline-block; }
+  .reply-link:hover { color: var(--accent); }
+
+  /* Timeline */
+  .tl-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .tl-item:last-child { border-bottom: none; }
+  .tl-time { font-size: 11px; color: var(--text2); white-space: nowrap; min-width: 60px; }
+  .tl-badge { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 11px; font-weight: 600; min-width: 56px; text-align: center; }
+  .tl-badge.comment { background: #1f3a2e; color: var(--green); }
+  .tl-badge.post { background: #2a1f3a; color: var(--purple); }
+  .tl-badge.upvote { background: #3a2a1f; color: var(--orange); }
+  .tl-content { color: var(--text); font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-content a { color: var(--text2); text-decoration: none; }
+  .tl-content a:hover { color: var(--accent); }
+  .tl-content .preview { color: var(--text); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .empty { text-align: center; color: var(--text2); padding: 20px; font-size: 13px; }
+  @media (max-width: 600px) { .grid, .grid-3 { grid-template-columns: 1fr; } .totals { gap: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>gwanjong</span> dashboard</h1>
+  <div class="meta">
+    <span id="updated-at">loading...</span>
+    <span> | auto-refresh 30s</span>
+  </div>
+</header>
+
+<div class="totals" id="totals"></div>
+
+<div class="grid">
+  <div class="card">
+    <h3>Platform Activity</h3>
+    <div id="platform-stats"></div>
+  </div>
+  <div class="card">
+    <h3>Rate Limits</h3>
+    <div id="rate-limits"></div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h3>Weekly Activity</h3>
+    <div class="chart" id="weekly-chart"></div>
+    <div class="chart-legend" id="chart-legend"></div>
+  </div>
+  <div class="card">
+    <h3>Engagement</h3>
+    <div id="engagement"></div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h3>Pending Replies</h3>
+    <div id="pending-replies"></div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 24px;">
+  <h3>Recent Activity</h3>
+  <div id="timeline"></div>
+</div>
+
+<script>
+const REFRESH = 30000;
+const PCOLORS = {devto:'#3b49df', bluesky:'#0085ff', twitter:'#1da1f2', reddit:'#ff4500'};
+const PNAMES = ['devto','bluesky','twitter','reddit'];
+
+async function fetchData() {
+  try {
+    const r = await fetch('/api/summary');
+    render(await r.json());
+  } catch(e) { console.error('Fetch failed:', e); }
+}
+
+function render(d) {
+  document.getElementById('updated-at').textContent = 'Updated: ' + new Date(d.generated_at).toLocaleTimeString('ko-KR');
+  renderTotals(d.totals);
+  renderPlatformStats(d.platforms);
+  renderRateLimits(d.rate_limits);
+  renderWeeklyChart(d.weekly_chart);
+  renderEngagement(d.engagement);
+  renderPendingReplies(d.pending_replies);
+  renderTimeline(d.recent_activity);
+}
+
+function renderTotals(t) {
+  document.getElementById('totals').innerHTML = `
+    <div class="total-item"><div class="num">${t.total_actions}</div><div class="label">Total Actions</div></div>
+    <div class="total-item"><div class="num">${t.total_seen_posts}</div><div class="label">Posts Seen</div></div>
+    <div class="total-item"><div class="num">${t.total_replies}</div><div class="label">Replies Received</div></div>
+    <div class="total-item"><div class="num">${t.pending_replies}</div><div class="label">Pending Replies</div></div>`;
+}
+
+function renderPlatformStats(platforms) {
+  const el = document.getElementById('platform-stats');
+  el.innerHTML = platforms.map(p => `
+    <div class="stat-row">
+      <div class="stat-label"><span class="pi ${p.platform}"></span>${p.platform}</div>
+      <div class="stat-values">
+        <span class="today">${p.today} today</span>
+        <span class="week">${p.week} /wk</span>
+        <span class="total">${p.total} total</span>
+      </div>
+    </div>`).join('');
+}
+
+function renderRateLimits(limits) {
+  const el = document.getElementById('rate-limits');
+  el.innerHTML = limits.map(l => {
+    const cPct = l.comments.max > 0 ? (l.comments.used / l.comments.max * 100) : 0;
+    const pPct = l.posts.max > 0 ? (l.posts.used / l.posts.max * 100) : 0;
+    const cClass = cPct >= 80 ? 'high' : cPct >= 50 ? 'mid' : 'low';
+    const pClass = pPct >= 80 ? 'high' : pPct >= 50 ? 'mid' : 'low';
+    const cdText = l.in_cooldown
+      ? `<span class="cooldown active">cooldown ${Math.ceil(l.cooldown_remaining_min)}m</span>`
+      : (l.last_action ? `<span class="cooldown ready">ready</span>` : '');
+    return `
+      <div class="rate-item">
+        <div class="rate-header">
+          <span><span class="pi ${l.platform}"></span>${l.platform}</span>
+          <span>comments ${l.comments.used}/${l.comments.max}${l.posts.max > 0 ? ` · posts ${l.posts.used}/${l.posts.max}` : ''}</span>
+        </div>
+        <div class="rate-bar"><div class="rate-fill ${cClass}" style="width:${Math.min(cPct,100)}%"></div></div>
+        ${cdText}
+      </div>`;
+  }).join('');
+}
+
+function renderWeeklyChart(chart) {
+  const el = document.getElementById('weekly-chart');
+  const maxCount = Math.max(...chart.map(d => d.total), 1);
+  el.innerHTML = chart.map(d => {
+    const totalH = Math.max((d.total / maxCount) * 70, d.total > 0 ? 4 : 2);
+    const segs = PNAMES.map(p => {
+      if (!d[p]) return '';
+      const h = (d[p] / d.total) * totalH;
+      return `<div class="chart-seg ${p}" style="height:${h}px" title="${p}: ${d[p]}"></div>`;
+    }).join('');
+    return `
+      <div class="chart-col">
+        <div class="chart-count">${d.total || ''}</div>
+        <div class="chart-stack" style="height:${totalH}px">${segs}</div>
+        <div class="chart-label">${d.date.slice(5)}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('chart-legend').innerHTML = PNAMES.map(p =>
+    `<span><span class="pi ${p}"></span>${p}</span>`
+  ).join('');
+}
+
+function renderEngagement(eng) {
+  const el = document.getElementById('engagement');
+  if (!eng || !eng.length) { el.innerHTML = '<div class="empty">No data</div>'; return; }
+  el.innerHTML = eng.map(e => {
+    const rateClass = e.reply_rate > 20 ? 'good' : e.reply_rate > 0 ? 'mid' : 'none';
+    return `
+      <div class="eng-row">
+        <div class="eng-label"><span class="pi ${e.platform}"></span>${e.platform}</div>
+        <div class="eng-stats">
+          <span class="eng-detail">${e.comments_sent} sent</span>
+          <span class="eng-detail">${e.replies_received} replies</span>
+          <span class="eng-rate ${rateClass}">${e.reply_rate}%</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderPendingReplies(replies) {
+  const el = document.getElementById('pending-replies');
+  if (!replies.length) { el.innerHTML = '<div class="empty">No pending replies</div>'; return; }
+  el.innerHTML = replies.slice(0,5).map(r => `
+    <div class="reply-item">
+      <div class="reply-header">
+        <span class="reply-author"><span class="pi ${r.platform}"></span>@${r.author}</span>
+        <span class="reply-time">${timeAgo(r.detected_at)}</span>
+      </div>
+      <div class="reply-body">${esc(stripHtml(r.body))}</div>
+      <a class="reply-link" href="${r.post_url}" target="_blank">${trunc(r.post_url,50)}</a>
+    </div>`).join('');
+}
+
+function renderTimeline(activity) {
+  const el = document.getElementById('timeline');
+  if (!activity.length) { el.innerHTML = '<div class="empty">No activity yet</div>'; return; }
+  el.innerHTML = activity.slice(0,15).map(a => {
+    const preview = a.content ? `<span class="preview">${esc(trunc(a.content, 80))}</span>` : '';
+    const url = a.post_url ? `<a href="${a.post_url}" target="_blank">${trunc(a.post_url,55)}</a>` : '-';
+    return `
+      <div class="tl-item">
+        <span class="tl-time">${timeAgo(a.timestamp)}</span>
+        <span class="pi ${a.platform}"></span>
+        <span class="tl-badge ${a.action}">${a.action}</span>
+        <div class="tl-content">${preview}${url}</div>
+      </div>`;
+  }).join('');
+}
+
+function timeAgo(s) {
+  if (!s) return '';
+  const d = Date.now() - new Date(s).getTime();
+  const m = Math.floor(d/60000);
+  if (m < 1) return 'now';
+  if (m < 60) return m+'m';
+  const h = Math.floor(m/60);
+  if (h < 24) return h+'h';
+  return Math.floor(h/24)+'d';
+}
+function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function stripHtml(s) { const d=document.createElement('div'); d.innerHTML=s; return d.textContent||''; }
+function trunc(s,n) { return s && s.length>n ? s.slice(0,n)+'...' : (s||''); }
+
+fetchData();
+setInterval(fetchData, REFRESH);
+</script>
+</body>
+</html>

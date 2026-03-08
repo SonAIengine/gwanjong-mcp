@@ -8,47 +8,81 @@ from datetime import datetime, timezone
 from typing import Any
 
 from devhub import Hub
+from devhub.registry import get_adapter_class
 from devhub.types import Post
 
+from .events import Event, EventBus
 from .types import ActionRecord, DraftContext, Opportunity
 
 logger = logging.getLogger(__name__)
 
 
 def _score_relevance(post: Post, topic: str) -> float:
-    """게시글의 주제 관련성 점수 (0.0 ~ 1.0)."""
+    """게시글의 주제 관련성 점수 (0.0 ~ 1.0). 플랫폼별 가중치 적용."""
     score = 0.0
     topic_lower = topic.lower()
     words = topic_lower.split()
 
-    # 제목 매칭
+    # 제목 매칭 (트윗 등 title 없는 플랫폼은 body로 보상)
     title_lower = post.title.lower()
+    has_title = bool(title_lower.strip())
     for word in words:
-        if word in title_lower:
+        if has_title and word in title_lower:
             score += 0.3
+        elif not has_title:
+            pass  # body에서 보상
 
-    # 본문 매칭
+    # 본문 매칭 (title 없으면 가중치 상향)
     body_lower = post.body.lower()
+    body_weight = 0.25 if not has_title else 0.1
     for word in words:
         if word in body_lower:
-            score += 0.1
+            score += body_weight
 
     # 태그 매칭
     for tag in post.tags:
         if tag.lower() in topic_lower or any(w in tag.lower() for w in words):
             score += 0.2
 
-    # 활발한 토론 보너스 (댓글 많을수록)
-    if post.comments_count > 20:
-        score += 0.15
-    elif post.comments_count > 5:
-        score += 0.1
+    # 플랫폼별 가중치 (주제 매칭이 있을 때만 적용)
+    platform = post.platform
+    if platform == "devto":
+        # Dev.to: 태그 매칭 + 적당한 토론이 가치 높음
+        if score > 0 and post.comments_count > 5:
+            score += 0.15
+        elif score > 0 and post.comments_count < 3:
+            score += 0.1  # 초기 댓글 기회
+    elif platform == "reddit":
+        # Reddit: 댓글 깊이가 핵심 (활발한 토론 = 참여 가치)
+        if score > 0 and post.comments_count > 20:
+            score += 0.2
+        elif score > 0 and post.comments_count > 5:
+            score += 0.15
+    elif platform == "twitter":
+        # Twitter: 도달 범위 (likes) 가중
+        if score > 0 and post.likes > 100:
+            score += 0.2
+        elif score > 0 and post.likes > 30:
+            score += 0.1
+    elif platform == "bluesky":
+        # Bluesky: 대화형 — 적당한 활동이면 충분
+        if score > 0 and post.comments_count > 3:
+            score += 0.1
+        if score > 0 and post.likes > 5:
+            score += 0.1
+    else:
+        # 기본 가중치
+        if score > 0 and post.comments_count > 20:
+            score += 0.15
+        elif score > 0 and post.comments_count > 5:
+            score += 0.1
 
-    # 인기도 보너스
-    if post.likes > 50:
-        score += 0.1
-    elif post.likes > 10:
-        score += 0.05
+    # 인기도 보너스 (플랫폼 공통, Twitter는 위에서 처리)
+    if platform != "twitter":
+        if post.likes > 50:
+            score += 0.1
+        elif post.likes > 10:
+            score += 0.05
 
     return min(score, 1.0)
 
@@ -73,17 +107,19 @@ async def scout(
     topic: str,
     platforms: list[str] | None = None,
     limit: int = 5,
+    bus: EventBus | None = None,
 ) -> tuple[dict[str, Opportunity], dict[str, Any]]:
     """정찰: trending + search → 점수화 → 상위 N개 기회 반환.
 
     Returns:
         (opportunities_dict, compressed_response)
     """
-    async with Hub.from_env() as hub:
-        # 플랫폼 필터링
-        if platforms:
-            hub.adapters = [a for a in hub.adapters if a.platform in platforms]
+    hub = Hub.from_env()
+    # 연결 전에 플랫폼 필터링 (불필요한 connect 방지)
+    if platforms:
+        hub.adapters = [a for a in hub.adapters if a.platform in platforms]
 
+    async with hub:
         if not hub.adapters:
             return {}, {
                 "opportunities": [],
@@ -124,6 +160,15 @@ async def scout(
             relevance=round(score, 2),
             comments_count=post.comments_count,
             reason=_generate_reason(post, topic, score),
+            suggested_actions=_suggest_actions(
+                # 임시 Opportunity로 actions 계산 (raw 필요)
+                Opportunity(
+                    id=opp_id, platform=post.platform, post_id=post.id,
+                    title="", url="", relevance=0, comments_count=post.comments_count,
+                    reason="", raw={"likes": post.likes},
+                ),
+                post.comments_count,
+            ),
             raw={"author": post.author, "likes": post.likes, "tags": post.tags},
         )
         opportunities[opp_id] = opp
@@ -134,6 +179,7 @@ async def scout(
             "relevance": opp.relevance,
             "comments": opp.comments_count,
             "reason": opp.reason,
+            "actions": opp.suggested_actions,
         })
 
     platforms_found = len({o.platform for o in opportunities.values()})
@@ -143,32 +189,26 @@ async def scout(
         "summary": f"{platforms_found}개 플랫폼에서 {len(compressed)}건의 기회 발견",
     }
 
+    if bus:
+        await bus.emit(Event("scout.done", {
+            "topic": topic,
+            "count": len(opportunities),
+            "opportunities": opportunities,
+        }))
+
     return opportunities, response
 
 
 async def draft(
     opportunity: Opportunity,
+    bus: EventBus | None = None,
 ) -> tuple[DraftContext, dict[str, Any]]:
     """초안 준비: 게시글 + 댓글 트리 + 분위기 분석.
 
     Returns:
         (draft_context, compressed_response)
     """
-    from devhub.bluesky import Bluesky
-    from devhub.devto import DevTo
-    from devhub.reddit import Reddit
-    from devhub.twitter import Twitter
-
-    adapter_map = {
-        "devto": DevTo,
-        "bluesky": Bluesky,
-        "twitter": Twitter,
-        "reddit": Reddit,
-    }
-
-    cls = adapter_map.get(opportunity.platform)
-    if cls is None:
-        raise ValueError(f"지원하지 않는 플랫폼: {opportunity.platform}")
+    cls = get_adapter_class(opportunity.platform)
 
     adapter = cls()
     async with adapter:
@@ -204,6 +244,13 @@ async def draft(
         "avoid": ctx.avoid,
     }
 
+    if bus:
+        await bus.emit(Event("draft.done", {
+            "opportunity_id": opportunity.id,
+            "platform": opportunity.platform,
+            "context": ctx,
+        }))
+
     return ctx, response
 
 
@@ -211,34 +258,83 @@ async def strike(
     context: DraftContext,
     action: str,
     content: str,
+    bus: EventBus | None = None,
 ) -> tuple[ActionRecord, dict[str, Any]]:
     """실행: 댓글/게시글/교차게시 작성.
 
     Returns:
         (action_record, compressed_response)
     """
-    from devhub.bluesky import Bluesky
-    from devhub.devto import DevTo
-    from devhub.reddit import Reddit
-    from devhub.twitter import Twitter
+    # strike.before 이벤트 — safety 등 플러그인이 차단 가능
+    if bus:
+        await bus.emit(Event("strike.before", {
+            "platform": context.platform,
+            "action": action,
+            "content": content,
+            "context": context,
+        }))
 
-    adapter_map = {
-        "devto": DevTo,
-        "bluesky": Bluesky,
-        "twitter": Twitter,
-        "reddit": Reddit,
-    }
+    cls = get_adapter_class(context.platform)
 
-    cls = adapter_map.get(context.platform)
-    if cls is None:
-        raise ValueError(f"지원하지 않는 플랫폼: {context.platform}")
+    # 플랫폼별 액션 검증 (adapter의 setup_guide에서 가져오되, 하드코딩 fallback)
+    allowed = PLATFORM_ACTIONS.get(context.platform)
+    if allowed is None:
+        guide = cls.setup_guide()
+        allowed = guide.get("allowed_actions", ["comment"])
+    if action not in allowed:
+        return ActionRecord(
+            opportunity_id=context.opportunity_id,
+            action=action,
+            platform=context.platform,
+            url="",
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        ), {
+            "error": f"{context.platform}에서 '{action}'은 허용되지 않음",
+            "allowed_actions": allowed,
+            "reason": "reddit은 self-promo 금지" if context.platform == "reddit" and action == "post" else "플랫폼 정책",
+        }
+
+    # Dev.to comment는 API 미지원 → 브라우저 자동화
+    if context.platform == "devto" and action == "comment":
+        from .browser import devto_write_comment
+        # context.opportunity_id는 server.py에서 실제 post_id로 교체된 상태
+        article_url = f"https://dev.to/api/articles/{context.opportunity_id}"
+        # 실제 URL을 가져와서 사용
+        adapter = cls()
+        async with adapter:
+            post = await adapter.get_post(context.opportunity_id)
+        article_url = post.url
+
+        browser_result = await devto_write_comment(
+            article_id=context.opportunity_id,
+            article_url=article_url,
+            body=content,
+        )
+        record = ActionRecord(
+            opportunity_id=context.opportunity_id,
+            action=action,
+            platform=context.platform,
+            url=browser_result.get("url", ""),
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+        response: dict[str, Any] = {
+            "status": "posted" if browser_result["status"] == "ok" else "failed",
+            "url": browser_result.get("url", ""),
+            "platform": context.platform,
+        }
+        if browser_result["status"] != "ok":
+            response["error"] = browser_result["message"]
+        if bus:
+            await bus.emit(Event("strike.after", {
+                "record": record,
+                "response": response,
+                "content": content,
+            }))
+        return record, response
 
     adapter = cls()
     async with adapter:
         if action == "comment":
-            # opportunity의 post_id가 필요 — context에서 역추적
-            # DraftContext에는 post_id가 없으므로 opportunity_id로 state에서 가져와야 함
-            # 여기선 server.py에서 post_id를 넘겨받는 구조
             result = await adapter.write_comment(
                 context.opportunity_id,  # server.py에서 실제 post_id로 교체
                 content,
@@ -275,6 +371,13 @@ async def strike(
     if not result.success:
         response["error"] = result.error
 
+    if bus:
+        await bus.emit(Event("strike.after", {
+            "record": record,
+            "response": response,
+            "content": content,
+        }))
+
     return record, response
 
 
@@ -301,22 +404,85 @@ def _analyze_tone(comments: list[str]) -> str:
     return "neutral"
 
 
+# 플랫폼별 허용 액션
+PLATFORM_ACTIONS: dict[str, list[str]] = {
+    "devto": ["comment", "post"],       # 댓글 기여 + 글 발행 (핵심 거점)
+    "bluesky": ["comment", "post"],     # 리플 + 포스트 (네트워킹)
+    "twitter": ["comment", "post"],     # 리플 (visibility) + 트윗 (홍보)
+    "reddit": ["comment", "upvote"],    # 댓글만 (자기홍보 금지, post 차단)
+}
+
+
 def _suggest_approach(opp: Opportunity, comment_count: int) -> str:
-    """추천 접근 방식."""
-    if comment_count > 20:
-        return "comment"  # 활발한 토론에 참여
-    if comment_count < 3:
-        return "comment"  # 새 글에 초기 반응
+    """플랫폼 특성 + 토론 상태에 따른 추천 접근 방식."""
+    platform = opp.platform
+
+    if platform == "devto":
+        if comment_count < 3:
+            return "comment"  # 새 글에 초기 반응 → 가시성 높음
+        if comment_count > 15:
+            return "comment"  # 활발한 토론 참여
+        return "comment"  # Dev.to는 기본적으로 댓글 기여
+
+    if platform == "bluesky":
+        if comment_count > 5:
+            return "comment"  # 대화에 참여
+        return "post"  # 조용한 글이면 독립 포스트로 화제 만들기
+
+    if platform == "twitter":
+        if opp.raw.get("likes", 0) > 50:
+            return "comment"  # 인기 트윗에 리플 → visibility 극대화
+        return "post"  # 아니면 독립 트윗 (프로젝트 홍보)
+
+    if platform == "reddit":
+        return "comment"  # Reddit은 무조건 댓글. post는 downvote 폭격.
+
     return "comment"
 
 
+def _suggest_actions(opp: Opportunity, comment_count: int) -> list[str]:
+    """플랫폼별 추천 액션 목록 (우선순위 순)."""
+    platform = opp.platform
+
+    if platform == "devto":
+        actions = ["comment"]
+        if comment_count < 3:
+            actions.append("post")  # 관련 주제로 글 발행도 고려
+        return actions
+
+    if platform == "bluesky":
+        if comment_count > 5:
+            return ["comment", "post"]  # 대화 참여 우선
+        return ["post", "comment"]  # Build in Public 스타일
+
+    if platform == "twitter":
+        if opp.raw.get("likes", 0) > 50:
+            return ["comment"]  # 인기 트윗에 리플만
+        return ["post", "comment"]  # 홍보 트윗 우선
+
+    if platform == "reddit":
+        return ["comment", "upvote"]  # post 절대 금지
+
+    return ["comment"]
+
+
 def _check_avoid(opp: Opportunity) -> list[str]:
-    """주의사항 생성."""
+    """플랫폼별 주의사항 생성."""
     avoid: list[str] = []
-    if opp.platform == "reddit":
-        avoid.append("No direct links — self-promo rules vary by subreddit")
-    if opp.platform == "twitter":
-        avoid.append("280 char limit — keep it tight")
+    if opp.platform == "devto":
+        avoid.append("Don't just drop a link to your project — add value first")
+        avoid.append("Reference specific code/concepts from the post")
+    elif opp.platform == "bluesky":
+        avoid.append("Keep it conversational — Bluesky is not a blog")
+        avoid.append("300 char limit per post — thread if needed")
+    elif opp.platform == "twitter":
+        avoid.append("280 char limit — one sharp point, not a summary")
+        avoid.append("Don't reply-spam popular accounts")
+    elif opp.platform == "reddit":
+        avoid.append("NEVER post self-promo — instant downvote + possible ban")
+        avoid.append("No direct links to your project unless asked")
+        avoid.append("Read subreddit rules before commenting")
+        avoid.append("Be blunt and helpful, not polished")
     avoid.extend(WRITING_AVOID)
     return avoid
 

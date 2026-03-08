@@ -8,7 +8,7 @@ from typing import Any
 
 @dataclass
 class Opportunity:
-    """scout가 발견한 홍보 기회."""
+    """scout가 발견한 참여 기회."""
 
     id: str
     platform: str
@@ -18,6 +18,7 @@ class Opportunity:
     relevance: float
     comments_count: int
     reason: str
+    suggested_actions: list[str] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
 
 

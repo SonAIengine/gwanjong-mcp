@@ -10,6 +10,10 @@ from dotenv import load_dotenv
 from mcp_pipeline import PipelineMCP, State
 
 from . import pipeline, setup
+from .events import EventBus
+from .memory import Memory
+from .safety import Safety
+from .tracker import Tracker
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +30,14 @@ class GwanjongState(State):
     contexts: dict[str, Any] = {}
     history: list[dict] = []
 
+
+# 글로벌 EventBus — 플러그인이 attach 가능
+bus = EventBus()
+
+# 플러그인 자동 연결
+Safety().attach(bus)
+Memory().attach(bus)
+Tracker().attach(bus)
 
 server = PipelineMCP("gwanjong", state=GwanjongState)
 
@@ -75,7 +87,7 @@ async def gwanjong_scout(
     state: GwanjongState | None = None,
 ) -> dict[str, Any]:
     """개발자 커뮤니티에서 관련 토론 정찰. 점수화된 상위 기회를 반환."""
-    opportunities, response = await pipeline.scout(topic, platforms, limit)
+    opportunities, response = await pipeline.scout(topic, platforms, limit, bus=bus)
     # state에 직접 저장 (stores 데코레이터 대신 수동 — 반환값은 압축 응답이므로)
     if state is not None:
         state.opportunities = opportunities
@@ -95,7 +107,7 @@ async def gwanjong_draft(
         return {"error": f"기회 '{opportunity_id}'를 찾을 수 없음. scout를 먼저 실행하세요."}
 
     opp = state.opportunities[opportunity_id]
-    context, response = await pipeline.draft(opp)
+    context, response = await pipeline.draft(opp, bus=bus)
 
     # contexts에 저장
     if state is not None:
@@ -127,7 +139,7 @@ async def gwanjong_strike(
     # DraftContext의 opportunity_id를 실제 post_id로 교체하여 strike 실행
     context.opportunity_id = post_id
 
-    record, response = await pipeline.strike(context, action, content)
+    record, response = await pipeline.strike(context, action, content, bus=bus)
 
     # 이력 기록
     if state is not None:

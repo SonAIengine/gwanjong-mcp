@@ -1,0 +1,232 @@
+"""안전장치 — Rate limiting + 콘텐츠 검증. EventBus 플러그인."""
+
+from __future__ import annotations
+
+import logging
+import re
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from .events import Event, EventBus
+
+logger = logging.getLogger(__name__)
+
+DB_PATH = Path.home() / ".gwanjong" / "memory.db"
+
+# AI가 흔히 쓰는 패턴
+AI_WORDS = {
+    "fascinating", "insightful", "resonates", "game-changer",
+    "deep dive", "kudos", "compelling", "groundbreaking",
+}
+
+AI_OPENERS = [
+    r"^(this is (amazing|great|awesome|incredible))",
+    r"^(great (article|post|write-up|read))",
+    r"^(love this)",
+    r"^(curious about)",
+    r"^(i'd love to hear)",
+]
+
+
+@dataclass
+class PlatformLimit:
+    """플랫폼별 활동 제한."""
+
+    platform: str
+    max_comments_per_day: int = 3
+    max_posts_per_day: int = 1
+    max_upvotes_per_day: int = 5
+    min_interval_minutes: int = 30
+    cooldown_after_error_minutes: int = 60
+
+
+# 기본 제한 (GUIDE.md 기반)
+DEFAULT_LIMITS: dict[str, PlatformLimit] = {
+    "devto": PlatformLimit("devto", max_comments_per_day=3, max_posts_per_day=1),
+    "bluesky": PlatformLimit("bluesky", max_comments_per_day=5, max_posts_per_day=2),
+    "twitter": PlatformLimit("twitter", max_comments_per_day=5, max_posts_per_day=2),
+    "reddit": PlatformLimit("reddit", max_comments_per_day=3, max_posts_per_day=0),
+}
+
+
+def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
+    """SQLite 연결. 테이블 없으면 생성."""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rate_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            platform TEXT NOT NULL,
+            action TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            status TEXT DEFAULT 'ok'
+        )
+    """)
+    conn.commit()
+    return conn
+
+
+class Safety:
+    """Rate limiting + 콘텐츠 검증. EventBus에 attach하면 strike.before를 자동 차단."""
+
+    def __init__(
+        self,
+        limits: dict[str, PlatformLimit] | None = None,
+        db_path: Path = DB_PATH,
+    ) -> None:
+        self.limits = limits or dict(DEFAULT_LIMITS)
+        self._db_path = db_path
+
+    def attach(self, bus: EventBus) -> None:
+        """EventBus에 연결. strike.before/after 이벤트를 구독."""
+        bus.on("strike.before", self._on_strike_before)
+        bus.on("strike.after", self._on_strike_after)
+        logger.info("Safety attached to EventBus")
+
+    async def _on_strike_before(self, event: Event) -> bool | None:
+        """strike 전 검증. False 반환 시 차단."""
+        platform = event.data.get("platform", "")
+        action = event.data.get("action", "")
+        content = event.data.get("content", "")
+
+        # 1. rate limit 체크
+        ok, reason = self.check_rate_limit(platform, action)
+        if not ok:
+            logger.warning("Rate limit: %s", reason)
+            return False
+
+        # 2. 콘텐츠 검증 (upvote는 콘텐츠 없음)
+        if action != "upvote" and content:
+            ok, violations = self.validate_content(content, platform)
+            if not ok:
+                logger.warning("Content guard: %s", violations)
+                return False
+
+        return None  # 통과
+
+    async def _on_strike_after(self, event: Event) -> None:
+        """strike 완료 시 rate_log에 기록."""
+        record = event.data.get("record")
+        response = event.data.get("response", {})
+        if record is None:
+            return
+        platform = record.platform if hasattr(record, "platform") else record.get("platform", "")
+        action = record.action if hasattr(record, "action") else record.get("action", "")
+        status = "ok" if response.get("status") == "posted" else "fail"
+        self.record_action(platform, action, status)
+
+    # ── Rate Limiter ──
+
+    def check_rate_limit(self, platform: str, action: str) -> tuple[bool, str]:
+        """활동 가능 여부 + 불가 시 이유."""
+        limit = self.limits.get(platform)
+        if limit is None:
+            # 알 수 없는 플랫폼은 보수적 기본값
+            limit = PlatformLimit(platform)
+
+        conn = _get_db(self._db_path)
+        try:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+            # 일일 횟수 체크
+            row = conn.execute(
+                "SELECT COUNT(*) FROM rate_log WHERE platform=? AND action=? AND timestamp LIKE ? AND status='ok'",
+                (platform, action, f"{today}%"),
+            ).fetchone()
+            count = row[0] if row else 0
+
+            max_per_day = {
+                "comment": limit.max_comments_per_day,
+                "post": limit.max_posts_per_day,
+                "upvote": limit.max_upvotes_per_day,
+            }.get(action, 3)
+
+            if count >= max_per_day:
+                return False, f"{platform} {action} 일일 한도 초과 ({count}/{max_per_day})"
+
+            # 최소 간격 체크
+            row = conn.execute(
+                "SELECT timestamp FROM rate_log WHERE platform=? AND status='ok' ORDER BY id DESC LIMIT 1",
+                (platform,),
+            ).fetchone()
+            if row:
+                last = datetime.fromisoformat(row[0])
+                now = datetime.now(timezone.utc)
+                elapsed = (now - last).total_seconds() / 60
+                if elapsed < limit.min_interval_minutes:
+                    remaining = limit.min_interval_minutes - elapsed
+                    return False, f"{platform} 쿨다운 중 ({remaining:.0f}분 남음)"
+
+            return True, ""
+        finally:
+            conn.close()
+
+    def record_action(self, platform: str, action: str, status: str = "ok") -> None:
+        """활동 기록."""
+        conn = _get_db(self._db_path)
+        try:
+            conn.execute(
+                "INSERT INTO rate_log (platform, action, timestamp, status) VALUES (?, ?, ?, ?)",
+                (platform, action, datetime.now(timezone.utc).isoformat(), status),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_daily_stats(self) -> dict[str, dict[str, int]]:
+        """오늘의 플랫폼별 활동 통계."""
+        conn = _get_db(self._db_path)
+        try:
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            rows = conn.execute(
+                "SELECT platform, action, COUNT(*) FROM rate_log WHERE timestamp LIKE ? AND status='ok' GROUP BY platform, action",
+                (f"{today}%",),
+            ).fetchall()
+            stats: dict[str, dict[str, int]] = {}
+            for platform, action, count in rows:
+                stats.setdefault(platform, {})[action] = count
+            return stats
+        finally:
+            conn.close()
+
+    # ── Content Guard ──
+
+    def validate_content(
+        self, content: str, platform: str = ""
+    ) -> tuple[bool, list[str]]:
+        """콘텐츠 안전성 검증. (통과 여부, 위반 목록)."""
+        violations: list[str] = []
+        content_lower = content.lower()
+
+        # 1. AI 단어 탐지
+        found_ai = [w for w in AI_WORDS if w in content_lower]
+        if found_ai:
+            violations.append(f"AI 패턴 단어: {', '.join(found_ai)}")
+
+        # 2. AI 오프너 탐지
+        for pattern in AI_OPENERS:
+            if re.search(pattern, content_lower):
+                violations.append(f"AI 오프너 패턴: {pattern}")
+                break
+
+        # 3. 칭찬→경험→질문 공식 탐지
+        has_praise = any(w in content_lower for w in ("great", "amazing", "love", "awesome"))
+        has_experience = any(w in content_lower for w in ("in my experience", "i've found", "i tried"))
+        has_question = content.rstrip().endswith("?")
+        if has_praise and has_experience and has_question:
+            violations.append("공식적 구조: 칭찬→경험→질문")
+
+        # 4. 길이 검증
+        max_lengths = {"twitter": 280, "bluesky": 300}
+        if platform in max_lengths and len(content) > max_lengths[platform]:
+            violations.append(f"{platform} 길이 초과 ({len(content)}/{max_lengths[platform]})")
+
+        # 5. 자기 홍보 비율 (URL 개수)
+        url_count = len(re.findall(r"https?://", content))
+        if url_count > 1:
+            violations.append(f"URL {url_count}개 — 자기 홍보 의심")
+
+        return len(violations) == 0, violations
