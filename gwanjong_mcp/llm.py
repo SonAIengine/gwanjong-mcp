@@ -136,7 +136,9 @@ class CommentGenerator:
 
     # ── 프롬프트 빌더 ──
 
-    def _build_system_prompt(self, ctx: DraftContext, persona: Persona) -> str:
+    def _build_system_prompt(
+        self, ctx: DraftContext, persona: Persona, action: str = "comment",
+    ) -> str:
         """시스템 프롬프트 조합."""
         from .types import Opportunity
         fake_opp = Opportunity(
@@ -144,8 +146,9 @@ class CommentGenerator:
             post_id="", title=ctx.title, url="",
             relevance=0, comments_count=0, reason="",
         )
-        writing_guide = _build_writing_guide(fake_opp, ctx.tone)
+        writing_guide = _build_writing_guide(fake_opp, ctx.tone, action=action)
         avoid = "\n".join(f"- {a}" for a in WRITING_AVOID)
+        output_label = "post" if action == "post" else "comment"
 
         return f"""{writing_guide}
 
@@ -155,9 +158,9 @@ PERSONA:
 AVOID:
 {avoid}
 
-Output ONLY the comment text. No quotes, no labels, no explanation."""
+Output ONLY the {output_label} text. No quotes, no labels, no explanation."""
 
-    def _build_user_prompt(self, ctx: DraftContext) -> str:
+    def _build_user_prompt(self, ctx: DraftContext, action: str = "comment") -> str:
         """유저 프롬프트 조합."""
         parts = [
             f"Post title: {ctx.title}",
@@ -169,5 +172,8 @@ Output ONLY the comment text. No quotes, no labels, no explanation."""
                 parts.append(f"  {i}. {c[:150]}")
         parts.append(f"\nTone of discussion: {ctx.tone}")
         parts.append(f"Suggested approach: {ctx.suggested_approach}")
-        parts.append("\nWrite a comment:")
+        if action == "post":
+            parts.append("\nWrite a post:")
+        else:
+            parts.append("\nWrite a comment:")
         return "\n".join(parts)

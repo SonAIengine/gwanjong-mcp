@@ -226,22 +226,29 @@ async def draft(
 ) -> tuple[DraftContext, dict[str, Any]]:
     """초안 준비: 게시글 + 댓글 트리 + 분위기 분석.
 
+    Twitter는 get_post를 Playwright 스크래핑으로 대체 (API 비용 절감).
+    댓글은 비로그인 스크래핑 불가 → API 유지.
+
     Returns:
         (draft_context, compressed_response)
     """
     cls = get_adapter_class(opportunity.platform)
 
-    adapter = cls()
-    async with adapter:
-        post = await adapter.get_post(opportunity.post_id)
-        comments = await adapter.get_comments(opportunity.post_id, limit=20)
+    if opportunity.platform == "twitter" and opportunity.url:
+        # Twitter: get_post를 스크래핑으로 대체 (API 호출 1건 절감)
+        post, comments = await _draft_twitter(opportunity, cls)
+    else:
+        adapter = cls()
+        async with adapter:
+            post = await adapter.get_post(opportunity.post_id)
+            comments = await adapter.get_comments(opportunity.post_id, limit=20)
 
     # 분위기 분석 (간단 휴리스틱)
     comment_bodies = [c.body for c in comments]
     tone = _analyze_tone(comment_bodies)
     approach = _suggest_approach(opportunity, len(comments))
     avoid = _check_avoid(opportunity)
-    writing_guide = _build_writing_guide(opportunity, tone)
+    writing_guide = _build_writing_guide(opportunity, tone, action=approach)
 
     ctx = DraftContext(
         opportunity_id=opportunity.id,
@@ -273,6 +280,45 @@ async def draft(
         }))
 
     return ctx, response
+
+
+async def _draft_twitter(
+    opportunity: Opportunity, adapter_cls: type,
+) -> tuple[Post, list[Any]]:
+    """Twitter draft: get_post는 스크래핑, get_comments는 API.
+
+    비로그인 스크래핑으로 get_post API 호출 1건 절감.
+    댓글은 비로그인 접근 불가 → API fallback.
+    """
+    from .scraper import get_tweet
+
+    scraped = await get_tweet(opportunity.url)
+
+    if scraped:
+        post = Post(
+            id=scraped.id,
+            platform="twitter",
+            title=scraped.text[:80] if scraped.text else "",
+            url=scraped.url,
+            body=scraped.text,
+            author=scraped.author,
+            likes=scraped.likes,
+            comments_count=scraped.replies,
+            raw={"scraped": True},
+        )
+    else:
+        # 스크래핑 실패 시 API fallback
+        logger.warning("Twitter 스크래핑 실패, API fallback: %s", opportunity.url)
+        adapter = adapter_cls()
+        async with adapter:
+            post = await adapter.get_post(opportunity.post_id)
+
+    # 댓글은 API로만 가능 (비로그인 스크래핑 불가)
+    adapter = adapter_cls()
+    async with adapter:
+        comments = await adapter.get_comments(opportunity.post_id, limit=20)
+
+    return post, comments
 
 
 async def strike(
@@ -520,8 +566,15 @@ WRITING_AVOID = [
 ]
 
 
-def _build_writing_guide(opp: Opportunity, tone: str) -> str:
-    """사람처럼 쓰기 위한 구체적 가이드."""
+def _build_writing_guide(opp: Opportunity, tone: str, action: str = "comment") -> str:
+    """사람처럼 쓰기 위한 구체적 가이드. action에 따라 comment/post 분기."""
+    if action == "post":
+        return _build_post_guide(opp)
+    return _build_comment_guide(opp, tone)
+
+
+def _build_comment_guide(opp: Opportunity, tone: str) -> str:
+    """댓글용 가이드."""
     guide = (
         "Write like a real developer leaving a comment, not an AI assistant.\n"
         "\n"
@@ -549,5 +602,62 @@ def _build_writing_guide(opp: Opportunity, tone: str) -> str:
         guide += "- Twitter is punchy. One sharp observation > a polished paragraph.\n"
     elif opp.platform == "bluesky":
         guide += "- Bluesky is conversational. Think quote-tweet energy.\n"
+
+    return guide
+
+
+def _build_post_guide(opp: Opportunity) -> str:
+    """오리지널 게시글/트윗 작성 가이드."""
+    guide = (
+        "You're chatting with fellow devs about something you built. Like a conversation, not a pitch.\n"
+        "\n"
+        "TONE & STRUCTURE:\n"
+        "- Conversational storytelling. Talk TO people, not AT them.\n"
+        "  Good: 'LLM agent에 tool을 많이 넣으면 늘 이런 문제가 생기죠.'\n"
+        "  Bad: 'We present a novel approach to tool retrieval.'\n"
+        "- Start with a relatable problem. Make the reader nod along.\n"
+        "- Walk through the solution like explaining to a friend over coffee.\n"
+        "- Use rhetorical questions to pull readers in: '이거 어떻게 해결하냐고요?'\n"
+        "- Numbers/benchmarks woven into the story, not listed.\n"
+        "  Good: '248개 tool 던져봤더니 정확도가 20%로 떨어지더라고요 😅'\n"
+        "  Bad: 'Accuracy: 20% (baseline), 72% (ours)'\n"
+        "- Show genuine excitement but keep it grounded.\n"
+        "- Emoji for warmth and rhythm — like you'd use in a group chat.\n"
+        "- Be honest about rough edges. Trust comes from honesty.\n"
+        "- End with a soft invitation: 'feedback welcome' or 'curious what you think'\n"
+        "- Feature breakdown: explain WHAT each feature does and WHY it matters.\n"
+        "  Don't just list features — connect each one to a real pain point.\n"
+    )
+
+    if opp.platform == "twitter":
+        guide += (
+            "\nTWITTER THREAD FORMAT:\n"
+            "- Use a thread (4-7 tweets). Project intros need room to breathe.\n"
+            "- Tweet 1: 🔥 Hook — the problem everyone relates to + emoji to set the mood.\n"
+            "- Tweet 2-3: The solution, told as a story. 'so I ended up building...'\n"
+            "- Tweet 3-5: Feature walkthrough. One feature per tweet, explain why it matters.\n"
+            "  Each feature tweet: what it does → why you'd care → maybe a quick example.\n"
+            "- Tweet 6: Concrete result — benchmark, before/after, real example.\n"
+            "- Last tweet: Link + where to find it + soft CTA.\n"
+            "- Each tweet ≤ 280 chars. Should feel like a series of DMs, not an essay.\n"
+            "- Hashtags: 1-2 on the last tweet only.\n"
+            "- Korean threads: 구어체 OK. '~죠', '~거예요', '~거든요' 자연스럽게.\n"
+            "- English threads: casual, contractions, lowercase energy.\n"
+        )
+    elif opp.platform == "bluesky":
+        guide += (
+            "\nBLUESKY STYLE:\n"
+            "- 300 chars per post. Thread if needed.\n"
+            "- 'build in public' energy — share the journey, not just the product.\n"
+            "- Self-deprecation works. The community values realness.\n"
+        )
+    elif opp.platform == "devto":
+        guide += (
+            "\nDEV.TO STYLE:\n"
+            "- Story format: 'I had this problem → tried X → built Y'\n"
+            "- Code blocks expected. Quick-start that actually runs.\n"
+            "- Teaching a friend, not writing documentation.\n"
+            "- Tags: 3-4 relevant ones for discovery.\n"
+        )
 
     return guide
