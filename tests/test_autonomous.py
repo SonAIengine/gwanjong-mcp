@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
@@ -197,7 +198,7 @@ def test_approval_cli_list_and_approve(tmp_path: Path) -> None:
     env = dict(os.environ)
     env["GWANJONG_DB_PATH"] = str(db_path)
     list_result = subprocess.run(
-        [".venv/bin/python", "-m", "gwanjong_mcp.approval_cli", "list"],
+        [sys.executable, "-m", "gwanjong_mcp.approval_cli", "list"],
         cwd=Path(__file__).resolve().parents[1],
         env=env,
         check=True,
@@ -207,7 +208,7 @@ def test_approval_cli_list_and_approve(tmp_path: Path) -> None:
     assert f'"id": {item.id}' in list_result.stdout
 
     show_result = subprocess.run(
-        [".venv/bin/python", "-m", "gwanjong_mcp.approval_cli", "show", str(item.id)],
+        [sys.executable, "-m", "gwanjong_mcp.approval_cli", "show", str(item.id)],
         cwd=Path(__file__).resolve().parents[1],
         env=env,
         check=True,
