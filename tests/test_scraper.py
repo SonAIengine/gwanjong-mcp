@@ -1,7 +1,6 @@
-"""scraper.py 테스트 — 유틸 함수 + Playwright 통합."""
+"""scraper.py tests — utility functions + Playwright integration."""
 
 import pytest
-from playwright.async_api import async_playwright
 
 from gwanjong_mcp.scraper import (
     ScrapedTweet,
@@ -13,6 +12,10 @@ from gwanjong_mcp.scraper import (
 
 
 async def _ensure_playwright_launchable() -> None:
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        pytest.skip("playwright not installed")
     pw = await async_playwright().start()
     browser = None
     try:
