@@ -1,4 +1,4 @@
-"""Dev.to 브라우저 자동화 — Playwright persistent session."""
+"""Dev.to browser automation — Playwright persistent session."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ DEVTO_BASE = "https://dev.to"
 
 
 async def _get_context() -> tuple:
-    """Persistent browser context 반환. (playwright, context) 튜플."""
+    """Return a persistent browser context as a (playwright, context) tuple."""
     BROWSER_DATA_DIR.mkdir(parents=True, exist_ok=True)
     pw = await async_playwright().start()
     context = await pw.chromium.launch_persistent_context(
@@ -27,7 +27,7 @@ async def _get_context() -> tuple:
 
 
 async def is_logged_in(context: BrowserContext) -> bool:
-    """Dev.to 로그인 상태 확인."""
+    """Check if logged in to Dev.to."""
     page = await context.new_page()
     try:
         await page.goto(DEVTO_BASE, wait_until="domcontentloaded", timeout=15000)
@@ -41,7 +41,7 @@ async def is_logged_in(context: BrowserContext) -> bool:
 
 
 async def login_interactive() -> dict[str, str]:
-    """브라우저를 열어 수동 로그인 유도. headful 모드로 전환."""
+    """Open browser for manual login. Switches to headful mode."""
     BROWSER_DATA_DIR.mkdir(parents=True, exist_ok=True)
     pw = await async_playwright().start()
     context = await pw.chromium.launch_persistent_context(
@@ -72,12 +72,12 @@ async def login_interactive() -> dict[str, str]:
 
 
 async def devto_write_comment(article_id: str, article_url: str, body: str) -> dict[str, str]:
-    """Dev.to 게시글에 댓글 작성 (브라우저 자동화).
+    """Write a comment on a Dev.to article via browser automation.
 
     Args:
-        article_id: Dev.to article ID (숫자)
-        article_url: 게시글 URL
-        body: 댓글 내용 (markdown)
+        article_id: Dev.to article ID (numeric)
+        article_url: Article URL
+        body: Comment content (markdown)
 
     Returns:
         {"status": "ok"/"fail", "url": ..., "message": ...}

@@ -1,4 +1,4 @@
-"""승인 대기열 CLI."""
+"""Approval queue CLI."""
 
 from __future__ import annotations
 

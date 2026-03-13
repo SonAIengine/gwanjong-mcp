@@ -1,4 +1,4 @@
-"""gwanjong-daemon CLI 진입점 — 자율 모드 실행."""
+"""gwanjong-daemon CLI entry point — autonomous mode execution."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ if _env_path.exists():
 
 
 def main() -> None:
-    """CLI 진입점."""
+    """CLI entry point."""
     parser = argparse.ArgumentParser(
         prog="gwanjong-daemon",
         description="gwanjong autonomous social agent daemon",

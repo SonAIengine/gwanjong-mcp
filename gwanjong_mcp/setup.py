@@ -1,4 +1,4 @@
-"""플랫폼 온보딩 — 상태 확인, 안내, 키 저장, 연결 테스트."""
+"""Platform onboarding — status check, guidance, key storage, connection test."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ ENV_PATH = Path.home() / ".gwanjong" / ".env"
 
 
 def _get_guides() -> dict[str, dict[str, Any]]:
-    """레지스트리에 등록된 모든 어댑터에서 setup_guide를 동적으로 수집."""
+    """Dynamically collect setup_guide from all registered adapters in the registry."""
     return {name: cls.setup_guide() for name, cls in get_adapter_classes().items()}
 
 
 def _load_env() -> dict[str, str]:
-    """기존 .env 파일을 dict로 로드."""
+    """Load existing .env file into a dict."""
     env: dict[str, str] = {}
     if ENV_PATH.exists():
         for line in ENV_PATH.read_text().splitlines():
@@ -30,7 +30,7 @@ def _load_env() -> dict[str, str]:
 
 
 def _save_env(env: dict[str, str]) -> None:
-    """dict를 .env 파일로 저장."""
+    """Save a dict to the .env file."""
     ENV_PATH.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     for key, value in env.items():
@@ -39,7 +39,7 @@ def _save_env(env: dict[str, str]) -> None:
 
 
 def check_platforms() -> dict[str, Any]:
-    """각 플랫폼의 설정 상태를 확인 (레지스트리에서 동적 탐지)."""
+    """Check configuration status of each platform (dynamically detected from registry)."""
     env = _load_env()
     merged = {**os.environ, **env}
 
@@ -57,7 +57,7 @@ def check_platforms() -> dict[str, Any]:
 
 
 def get_guide(platform: str) -> dict[str, Any]:
-    """특정 플랫폼의 API 키 발급 안내를 반환."""
+    """Return API key setup instructions for a specific platform."""
     guides = _get_guides()
     if platform not in guides:
         return {"error": f"지원하지 않는 플랫폼: {platform}", "supported": list(guides)}
@@ -71,7 +71,7 @@ def get_guide(platform: str) -> dict[str, Any]:
 
 
 def save_credentials(platform: str, credentials: dict[str, str]) -> dict[str, Any]:
-    """API 키를 .env에 저장."""
+    """Save API keys to .env."""
     guides = _get_guides()
     if platform not in guides:
         return {"error": f"지원하지 않는 플랫폼: {platform}", "supported": list(guides)}
@@ -92,7 +92,7 @@ def save_credentials(platform: str, credentials: dict[str, str]) -> dict[str, An
 
 
 async def test_connection(platform: str) -> dict[str, Any]:
-    """플랫폼 연결 테스트 (get_trending limit=1)."""
+    """Test platform connection (get_trending limit=1)."""
     try:
         cls = get_adapter_class(platform)
     except KeyError:

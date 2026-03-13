@@ -1,4 +1,4 @@
-"""내장 LLM 클라이언트 — 자율 모드에서 댓글 생성용. 독립 모듈."""
+"""Built-in LLM client for comment generation in autonomous mode. Standalone module."""
 
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ from .pipeline import _build_writing_guide, WRITING_AVOID
 
 
 class CommentGenerator:
-    """댓글 생성 전용 LLM 클라이언트.
+    """LLM client dedicated to comment generation.
 
-    백엔드 우선순위:
-    1. claude CLI (Claude Code) — API 키 불필요, 로컬 인증 사용
-    2. anthropic SDK — ANTHROPIC_API_KEY 환경변수 필요
+    Backend priority:
+    1. claude CLI (Claude Code) — no API key needed, uses local auth
+    2. anthropic SDK — requires ANTHROPIC_API_KEY environment variable
     """
 
     def __init__(
@@ -37,7 +37,7 @@ class CommentGenerator:
         self._client: Any = None
 
     def _resolve_backend(self) -> str:
-        """사용 가능한 백엔드 자동 감지."""
+        """Auto-detect available backend."""
         if self._backend != "auto":
             return self._backend
         # claude CLI 존재 여부 확인
@@ -55,7 +55,7 @@ class CommentGenerator:
         context: DraftContext,
         max_tokens: int = 300,
     ) -> str:
-        """DraftContext + persona 기반으로 댓글 생성."""
+        """Generate a comment based on DraftContext and persona."""
         backend = self._resolve_backend()
         if backend == "cli":
             return await self._generate_cli(context, max_tokens)
@@ -64,7 +64,7 @@ class CommentGenerator:
     # ── Claude CLI 백엔드 ──
 
     async def _generate_cli(self, ctx: DraftContext, max_tokens: int) -> str:
-        """claude -p 로 댓글 생성. API 키 불필요."""
+        """Generate a comment via claude -p. No API key required."""
         persona = self.persona.get(ctx.platform)
         system_prompt = self._build_system_prompt(ctx, persona)
         user_prompt = self._build_user_prompt(ctx)
@@ -114,7 +114,7 @@ class CommentGenerator:
         return self._client
 
     async def _generate_sdk(self, ctx: DraftContext, max_tokens: int) -> str:
-        """anthropic SDK로 댓글 생성."""
+        """Generate a comment via the anthropic SDK."""
         persona = self.persona.get(ctx.platform)
         system_prompt = self._build_system_prompt(ctx, persona)
         user_prompt = self._build_user_prompt(ctx)
@@ -139,7 +139,7 @@ class CommentGenerator:
     def _build_system_prompt(
         self, ctx: DraftContext, persona: Persona, action: str = "comment",
     ) -> str:
-        """시스템 프롬프트 조합."""
+        """Build the system prompt."""
         from .types import Opportunity
         fake_opp = Opportunity(
             id=ctx.opportunity_id, platform=ctx.platform,
@@ -161,7 +161,7 @@ AVOID:
 Output ONLY the {output_label} text. No quotes, no labels, no explanation."""
 
     def _build_user_prompt(self, ctx: DraftContext, action: str = "comment") -> str:
-        """유저 프롬프트 조합."""
+        """Build the user prompt."""
         parts = [
             f"Post title: {ctx.title}",
             f"Post body (excerpt): {ctx.body_summary[:300]}",

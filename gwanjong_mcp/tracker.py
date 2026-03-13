@@ -1,4 +1,4 @@
-"""답글 추적 — 댓글 달았던 게시글에서 새 답글 감지. EventBus 플러그인."""
+"""Reply tracking — detect new replies on posts where comments were left. EventBus plugin."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def _ensure_replies_table(conn: sqlite3.Connection) -> None:
-    """replies 테이블이 없으면 생성."""
+    """Create the replies table if it does not exist."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS replies (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +37,7 @@ def _ensure_replies_table(conn: sqlite3.Connection) -> None:
 
 @dataclass
 class DetectedReply:
-    """감지된 답글."""
+    """A detected reply."""
 
     comment_id: str
     platform: str
@@ -49,11 +49,11 @@ class DetectedReply:
 
 
 class Tracker:
-    """답글 추적기. 댓글 달았던 게시글을 스캔하여 새 답글 감지.
+    """Reply tracker. Scans posts where comments were left to detect new replies.
 
-    EventBus 연동:
-    - strike.after 구독 → 댓글 작성 시 자동으로 추적 대상 등록
-    - reply.detected 발행 → 다른 모듈(autonomous 등)이 대응 가능
+    EventBus integration:
+    - Subscribes to strike.after: automatically registers tracking targets when comments are posted
+    - Emits reply.detected: allows other modules (e.g. autonomous) to respond
     """
 
     # 플랫폼별 gwanjong 사용자명 (환경변수에서 가져옴)
@@ -63,12 +63,12 @@ class Tracker:
         self._db_path = db_path
 
     def attach(self, bus: EventBus) -> None:
-        """EventBus에 연결."""
+        """Attach to the EventBus."""
         bus.on("strike.after", self._on_strike_after)
         logger.info("Tracker attached to EventBus")
 
     async def _on_strike_after(self, event: Event) -> None:
-        """strike 완료 시 댓글이면 추적 대상 기록 (memory.actions에 이미 저장되므로 별도 처리 불필요)."""
+        """Record tracking target if the completed strike was a comment (no extra storage needed since memory.actions already persists it)."""
         # Tracker는 scan 시 memory.actions를 읽으므로 여기서는 로깅만
         record = event.data.get("record")
         if record and getattr(record, "action", None) == "comment":
@@ -80,10 +80,10 @@ class Tracker:
         platforms: list[str] | None = None,
         limit: int = 20,
     ) -> list[DetectedReply]:
-        """memory.db에서 댓글 이력을 읽고, 해당 게시글의 답글을 스캔.
+        """Read comment history from memory.db and scan those posts for replies.
 
         Returns:
-            새로 감지된 답글 리스트
+            List of newly detected replies
         """
         conn = _get_db(self._db_path)
         _ensure_replies_table(conn)
@@ -149,7 +149,7 @@ class Tracker:
     async def _scan_platform(
         self, platform: str, posts: list[dict[str, str]]
     ) -> list[DetectedReply]:
-        """특정 플랫폼의 게시글들에서 답글 감지."""
+        """Detect replies on posts for a specific platform."""
         cls = get_adapter_class(platform)
         my_username = self._get_username(platform)
 
@@ -209,7 +209,7 @@ class Tracker:
         return replies
 
     def _save_new_replies(self, replies: list[DetectedReply]) -> list[DetectedReply]:
-        """새 답글만 DB에 저장. 이미 감지된 건 건너뜀."""
+        """Save only new replies to DB. Skip already detected ones."""
         if not replies:
             return []
 
@@ -235,7 +235,7 @@ class Tracker:
         return new
 
     def _get_username(self, platform: str) -> str:
-        """플랫폼별 gwanjong 사용자명 조회."""
+        """Look up the gwanjong username for a given platform."""
         if platform in self._usernames:
             return self._usernames[platform]
 
@@ -252,7 +252,7 @@ class Tracker:
         return username
 
     async def _resolve_devto_username(self) -> str:
-        """Dev.to API /users/me로 사용자명 조회."""
+        """Resolve username via the Dev.to /users/me API."""
         if "devto" in self._usernames:
             return self._usernames["devto"]
 
@@ -278,7 +278,7 @@ class Tracker:
             return ""
 
     def get_pending_replies(self, platform: str | None = None) -> list[dict[str, Any]]:
-        """아직 응답하지 않은 답글 조회."""
+        """Retrieve replies that have not been responded to yet."""
         conn = _get_db(self._db_path)
         _ensure_replies_table(conn)
         try:
@@ -296,7 +296,7 @@ class Tracker:
             conn.close()
 
     def mark_responded(self, comment_id: str) -> None:
-        """답글에 응답 완료 표시."""
+        """Mark a reply as responded."""
         conn = _get_db(self._db_path)
         _ensure_replies_table(conn)
         try:
@@ -309,7 +309,7 @@ class Tracker:
             conn.close()
 
     def get_stats(self) -> dict[str, Any]:
-        """답글 추적 통계."""
+        """Reply tracking statistics."""
         conn = _get_db(self._db_path)
         _ensure_replies_table(conn)
         try:

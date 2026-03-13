@@ -1,4 +1,4 @@
-"""EventBus — 모듈 간 느슨한 결합을 위한 pub/sub."""
+"""EventBus — Pub/sub for loose coupling between modules."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ logger = logging.getLogger(__name__)
 
 
 class Blocked(Exception):
-    """*.before 이벤트에서 핸들러가 차단했을 때 발생."""
+    """Raised when a handler blocks a *.before event."""
 
 
 @dataclass
 class Event:
-    """이벤트 데이터."""
+    """Event data."""
 
     type: str
     data: dict[str, Any] = field(default_factory=dict)
@@ -26,27 +26,27 @@ Handler = Callable[[Event], Awaitable[Any]]
 
 
 class EventBus:
-    """단순 async pub/sub. 의존성 없음.
+    """Simple async pub/sub. No dependencies.
 
-    - 일반 이벤트: 모든 핸들러 실행, 반환값 무시
-    - *.before 이벤트: 핸들러가 False를 반환하면 Blocked 예외 발생 (차단)
+    - Regular events: all handlers are executed, return values ignored.
+    - *.before events: if a handler returns False, a Blocked exception is raised.
     """
 
     def __init__(self) -> None:
         self._handlers: dict[str, list[Handler]] = {}
 
     def on(self, event_type: str, handler: Handler) -> None:
-        """이벤트 핸들러 등록."""
+        """Register an event handler."""
         self._handlers.setdefault(event_type, []).append(handler)
 
     def off(self, event_type: str, handler: Handler) -> None:
-        """이벤트 핸들러 제거."""
+        """Remove an event handler."""
         handlers = self._handlers.get(event_type, [])
         if handler in handlers:
             handlers.remove(handler)
 
     async def emit(self, event: Event) -> None:
-        """이벤트 발행. *.before 이벤트는 차단 가능."""
+        """Emit an event. *.before events can be blocked."""
         handlers = self._handlers.get(event.type, [])
         is_before = event.type.endswith(".before")
 
@@ -69,5 +69,5 @@ class EventBus:
 
     @property
     def handler_count(self) -> int:
-        """등록된 핸들러 총 수."""
+        """Total number of registered handlers."""
         return sum(len(hs) for hs in self._handlers.values())

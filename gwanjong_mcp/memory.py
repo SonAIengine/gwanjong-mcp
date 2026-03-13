@@ -1,4 +1,4 @@
-"""영속 메모리 — SQLite 기반 활동 이력 + 중복 방지. EventBus 플러그인."""
+"""Persistent memory — SQLite-based action history + deduplication. EventBus plugin."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ DB_PATH = Path(os.getenv("GWANJONG_DB_PATH", str(Path.home() / ".gwanjong" / "me
 
 
 def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
-    """SQLite 연결. 테이블 없으면 생성."""
+    """SQLite connection. Creates tables if they don't exist."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
@@ -45,19 +45,19 @@ def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
 
 
 class Memory:
-    """활동 이력 영속화 + 중복 방지. EventBus에 attach하면 자동 기록."""
+    """Persist action history + prevent duplicates. Auto-records when attached to EventBus."""
 
     def __init__(self, db_path: Path = DB_PATH) -> None:
         self._db_path = db_path
 
     def attach(self, bus: EventBus) -> None:
-        """EventBus에 연결."""
+        """Attach to EventBus."""
         bus.on("scout.done", self._on_scout_done)
         bus.on("strike.after", self._on_strike_after)
         logger.info("Memory attached to EventBus")
 
     async def _on_scout_done(self, event: Event) -> None:
-        """scout 완료 시 발견된 게시글을 seen_posts에 기록."""
+        """Record discovered posts in seen_posts when scout completes."""
         opportunities = event.data.get("opportunities", {})
         conn = _get_db(self._db_path)
         try:
@@ -75,7 +75,7 @@ class Memory:
             conn.close()
 
     async def _on_strike_after(self, event: Event) -> None:
-        """strike 완료 시 활동 이력 기록."""
+        """Record action history when strike completes."""
         record = event.data.get("record")
         if record is None:
             return
@@ -107,7 +107,7 @@ class Memory:
     # ── 조회 API ──
 
     def is_acted(self, post_url: str) -> bool:
-        """이미 활동한 게시글인지 확인."""
+        """Check if a post has already been acted on."""
         conn = _get_db(self._db_path)
         try:
             row = conn.execute(
@@ -119,7 +119,7 @@ class Memory:
             conn.close()
 
     def get_history(self, limit: int = 20, platform: str | None = None) -> list[dict[str, Any]]:
-        """최근 활동 이력 조회."""
+        """Retrieve recent action history."""
         conn = _get_db(self._db_path)
         try:
             if platform:
@@ -137,7 +137,7 @@ class Memory:
             conn.close()
 
     def get_action_count(self, platform: str | None = None, days: int = 7) -> int:
-        """최근 N일 활동 횟수."""
+        """Get action count for the last N days."""
         conn = _get_db(self._db_path)
         try:
             cutoff = datetime.now(timezone.utc).isoformat()[:10]  # 간단 비교용
@@ -156,7 +156,7 @@ class Memory:
             conn.close()
 
     def filter_unseen(self, opportunities: dict[str, Any]) -> dict[str, Any]:
-        """이미 활동한 기회를 필터링."""
+        """Filter out opportunities that have already been acted on."""
         conn = _get_db(self._db_path)
         try:
             filtered = {}

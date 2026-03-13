@@ -1,4 +1,4 @@
-"""페르소나 관리 — 플랫폼별 톤/스타일 설정. 독립 모듈."""
+"""Persona management — per-platform tone/style configuration. Standalone module."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ _DEFAULTS: dict[str, dict[str, Any]] = {
 
 @dataclass
 class Persona:
-    """플랫폼별 페르소나."""
+    """Per-platform persona."""
 
     platform: str
     tone: str = "neutral"
@@ -54,7 +54,7 @@ class Persona:
     extra: dict[str, Any] = field(default_factory=dict)
 
     def to_system_prompt(self) -> str:
-        """LLM 시스템 프롬프트용 페르소나 설명 생성."""
+        """Generate persona description for LLM system prompt."""
         parts = [
             f"Platform: {self.platform}",
             f"Tone: {self.tone}",
@@ -67,7 +67,7 @@ class Persona:
 
 
 class PersonaManager:
-    """페르소나 로딩/관리. 파일 I/O만 의존."""
+    """Persona loading/management. Depends only on file I/O."""
 
     def __init__(self, config_path: Path = CONFIG_PATH) -> None:
         self._config_path = config_path
@@ -76,7 +76,7 @@ class PersonaManager:
         self._load()
 
     def _load(self) -> None:
-        """persona.json 로드. 없으면 기본값 사용."""
+        """Load persona.json. Falls back to defaults if not found."""
         if self._config_path.exists():
             try:
                 data = json.loads(self._config_path.read_text())
@@ -101,17 +101,17 @@ class PersonaManager:
             self._personas[platform] = Persona(platform=platform, **config)
 
     def get(self, platform: str) -> Persona:
-        """플랫폼별 페르소나 반환. 없으면 기본값."""
+        """Return persona for a platform. Falls back to default."""
         if platform in self._personas:
             return self._personas[platform]
         return Persona(platform=platform)
 
     @property
     def identity(self) -> dict[str, Any]:
-        """사용자 아이덴티티 정보."""
+        """User identity information."""
         return self._identity
 
     @property
     def platforms(self) -> list[str]:
-        """설정된 플랫폼 목록."""
+        """List of configured platforms."""
         return list(self._personas.keys())

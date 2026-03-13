@@ -1,4 +1,4 @@
-"""승인 큐 — 자율 모드가 strike 전에 저장하는 대기열."""
+"""Approval queue — a waiting queue where autonomous mode saves items before strike."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
 
 @dataclass
 class ApprovalItem:
-    """승인 대기 항목."""
+    """An item pending approval."""
 
     id: int
     topic: str
@@ -78,7 +78,7 @@ class ApprovalItem:
 
 
 class ApprovalQueue:
-    """SQLite 기반 승인 대기열."""
+    """SQLite-backed approval queue."""
 
     def __init__(self, db_path: Path = DB_PATH) -> None:
         self._db_path = db_path

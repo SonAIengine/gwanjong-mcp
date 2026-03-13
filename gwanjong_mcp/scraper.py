@@ -1,10 +1,10 @@
-"""Twitter/X 비로그인 스크래핑 — Playwright headless.
+"""Twitter/X unauthenticated scraping — Playwright headless.
 
-API 호출 비용 절감을 위해 읽기 작업을 스크래핑으로 대체.
-비로그인 상태로 접근 가능한 데이터만 처리:
-  - get_tweet: 트윗 본문, 작성자, 시간, 메트릭 ✅
-  - get_profile_tweets: 유저 프로필 최근 트윗 목록 ✅
-  - get_comments: 비로그인 불가 ❌ → API fallback 필요
+Replaces read operations with scraping to reduce API call costs.
+Only processes data accessible without login:
+  - get_tweet: tweet body, author, timestamp, metrics
+  - get_profile_tweets: recent tweets from a user's profile page
+  - get_comments: not available without login — requires API fallback
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ _POST_LOAD_WAIT = 3000
 
 @dataclass
 class ScrapedTweet:
-    """스크래핑된 트윗 데이터."""
+    """Scraped tweet data."""
     id: str
     author: str          # @handle
     display_name: str
@@ -39,14 +39,14 @@ class ScrapedTweet:
 
 
 async def get_tweet(tweet_url: str) -> ScrapedTweet | None:
-    """트윗 페이지 스크래핑. 비로그인 접근.
+    """Scrape a tweet page. Unauthenticated access.
 
     Args:
-        tweet_url: https://x.com/{user}/status/{id} 형태.
-                   x.com/i/status/{id} 형태면 자동 변환.
+        tweet_url: URL in the form https://x.com/{user}/status/{id}.
+                   URLs in x.com/i/status/{id} form are automatically converted.
 
     Returns:
-        ScrapedTweet 또는 페이지 로딩 실패 시 None.
+        ScrapedTweet, or None if page loading fails.
     """
     pw = await async_playwright().start()
     browser = None
@@ -64,14 +64,14 @@ async def get_tweet(tweet_url: str) -> ScrapedTweet | None:
 
 
 async def get_profile_tweets(username: str, limit: int = 10) -> list[ScrapedTweet]:
-    """유저 프로필 페이지에서 최근 트윗 스크래핑.
+    """Scrape recent tweets from a user's profile page.
 
     Args:
-        username: @없이 handle만 (예: "sonseongjun97")
-        limit: 최대 가져올 트윗 수
+        username: Handle without @ (e.g. "sonseongjun97")
+        limit: Maximum number of tweets to fetch
 
     Returns:
-        ScrapedTweet 리스트 (최신순).
+        List of ScrapedTweet (newest first).
     """
     pw = await async_playwright().start()
     browser = None
@@ -92,7 +92,7 @@ async def get_profile_tweets(username: str, limit: int = 10) -> list[ScrapedTwee
 
 
 async def _scrape_tweet_page(page: Page, tweet_url: str) -> ScrapedTweet | None:
-    """트윗 상세 페이지 파싱."""
+    """Parse a tweet detail page."""
     await page.goto(tweet_url, wait_until="domcontentloaded", timeout=_GOTO_TIMEOUT)
 
     try:
@@ -125,7 +125,7 @@ async def _scrape_tweet_page(page: Page, tweet_url: str) -> ScrapedTweet | None:
 async def _scrape_profile_page(
     page: Page, username: str, limit: int,
 ) -> list[ScrapedTweet]:
-    """프로필 페이지에서 트윗 목록 파싱."""
+    """Parse tweet list from a profile page."""
     url = f"https://x.com/{username}"
     await page.goto(url, wait_until="domcontentloaded", timeout=_GOTO_TIMEOUT)
 
@@ -265,7 +265,7 @@ _JS_PARSE_TWEETS = """els => els.map(el => {
 
 
 def _extract_tweet_id(url: str) -> str:
-    """URL에서 tweet ID 추출."""
+    """Extract tweet ID from URL."""
     # x.com/user/status/123 또는 x.com/i/status/123
     parts = url.rstrip("/").split("/")
     for i, part in enumerate(parts):
@@ -275,10 +275,10 @@ def _extract_tweet_id(url: str) -> str:
 
 
 def _parse_metric(value: str) -> int:
-    """메트릭 문자열을 정수로 변환.
+    """Convert a metric string to an integer.
 
-    aria-label: '123 Likes' → 123
-    텍스트: '1.2K' → 1200, '15' → 15
+    aria-label: '123 Likes' -> 123
+    text: '1.2K' -> 1200, '15' -> 15
     """
     if not value:
         return 0

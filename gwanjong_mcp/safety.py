@@ -1,4 +1,4 @@
-"""안전장치 — Rate limiting + 콘텐츠 검증. EventBus 플러그인."""
+"""Safety guard — Rate limiting + content validation. EventBus plugin."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ AI_OPENERS = [
 
 @dataclass
 class PlatformLimit:
-    """플랫폼별 활동 제한."""
+    """Per-platform activity limits."""
 
     platform: str
     max_comments_per_day: int = 3
@@ -54,7 +54,7 @@ DEFAULT_LIMITS: dict[str, PlatformLimit] = {
 
 
 def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
-    """SQLite 연결. 테이블 없으면 생성."""
+    """Get SQLite connection. Creates table if not exists."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     conn.execute("""
@@ -71,7 +71,7 @@ def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
 
 
 class Safety:
-    """Rate limiting + 콘텐츠 검증. EventBus에 attach하면 strike.before를 자동 차단."""
+    """Rate limiting + content validation. Attach to EventBus to automatically gate strike.before."""
 
     def __init__(
         self,
@@ -82,13 +82,13 @@ class Safety:
         self._db_path = db_path
 
     def attach(self, bus: EventBus) -> None:
-        """EventBus에 연결. strike.before/after 이벤트를 구독."""
+        """Connect to EventBus. Subscribes to strike.before/after events."""
         bus.on("strike.before", self._on_strike_before)
         bus.on("strike.after", self._on_strike_after)
         logger.info("Safety attached to EventBus")
 
     async def _on_strike_before(self, event: Event) -> bool | None:
-        """strike 전 검증. False 반환 시 차단."""
+        """Validate before strike. Returns False to block."""
         platform = event.data.get("platform", "")
         action = event.data.get("action", "")
         content = event.data.get("content", "")
@@ -109,7 +109,7 @@ class Safety:
         return None  # 통과
 
     async def _on_strike_after(self, event: Event) -> None:
-        """strike 완료 시 rate_log에 기록."""
+        """Record to rate_log after strike completion."""
         record = event.data.get("record")
         response = event.data.get("response", {})
         if record is None:
@@ -122,7 +122,7 @@ class Safety:
     # ── Rate Limiter ──
 
     def check_rate_limit(self, platform: str, action: str) -> tuple[bool, str]:
-        """활동 가능 여부 + 불가 시 이유."""
+        """Check if action is allowed. Returns (ok, reason if denied)."""
         limit = self.limits.get(platform)
         if limit is None:
             # 알 수 없는 플랫폼은 보수적 기본값
@@ -166,7 +166,7 @@ class Safety:
             conn.close()
 
     def record_action(self, platform: str, action: str, status: str = "ok") -> None:
-        """활동 기록."""
+        """Record an action."""
         conn = _get_db(self._db_path)
         try:
             conn.execute(
@@ -178,7 +178,7 @@ class Safety:
             conn.close()
 
     def get_daily_stats(self) -> dict[str, dict[str, int]]:
-        """오늘의 플랫폼별 활동 통계."""
+        """Today's per-platform activity statistics."""
         conn = _get_db(self._db_path)
         try:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -198,7 +198,7 @@ class Safety:
     def validate_content(
         self, content: str, platform: str = ""
     ) -> tuple[bool, list[str]]:
-        """콘텐츠 안전성 검증. (통과 여부, 위반 목록)."""
+        """Validate content safety. Returns (passed, list of violations)."""
         violations: list[str] = []
         content_lower = content.lower()
 

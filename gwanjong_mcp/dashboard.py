@@ -1,6 +1,6 @@
-"""대시보드 웹서버 — aiohttp 기반 단독 프로세스.
+"""Dashboard web server — standalone process based on aiohttp.
 
-SQLite를 직접 읽어서 JSON API 제공. devhub/mcp-pipeline 의존성 없음.
+Reads SQLite directly to serve JSON APIs. No devhub/mcp-pipeline dependency.
 """
 
 from __future__ import annotations

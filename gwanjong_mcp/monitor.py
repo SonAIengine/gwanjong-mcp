@@ -1,4 +1,4 @@
-"""모니터링 데이터 집계 — SQLite에서 종합 리포트 생성. 웹 의존성 없음."""
+"""Monitoring data aggregation — generate comprehensive reports from SQLite. No web dependencies."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ _PLATFORMS = ["devto", "bluesky", "twitter", "reddit"]
 
 
 def get_summary(db_path: Path = DB_PATH) -> dict[str, Any]:
-    """전체 대시보드 데이터를 한 번에 수집."""
+    """Collect all dashboard data in a single call."""
     conn = _get_db(db_path)
     _ensure_rate_log(conn)
     _ensure_replies_table(conn)
@@ -52,7 +52,7 @@ def _ensure_rate_log(conn: sqlite3.Connection) -> None:
 
 
 def _platform_stats(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """플랫폼별 활동 통계."""
+    """Per-platform activity statistics."""
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
     week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -97,7 +97,7 @@ def _platform_stats(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def _rate_limit_status(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """플랫폼별 rate limit 잔여량."""
+    """Per-platform rate limit remaining quota."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     limits = []
     for p, limit in DEFAULT_LIMITS.items():
@@ -130,7 +130,7 @@ def _rate_limit_status(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def _pending_replies(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """미응답 답글 목록."""
+    """List of unanswered replies."""
     rows = conn.execute(
         "SELECT * FROM replies WHERE responded = 0 ORDER BY detected_at DESC LIMIT 20",
     ).fetchall()
@@ -149,7 +149,7 @@ def _pending_replies(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def _recent_activity(conn: sqlite3.Connection, limit: int = 30) -> list[dict[str, Any]]:
-    """최근 활동 타임라인."""
+    """Recent activity timeline."""
     rows = conn.execute(
         "SELECT * FROM actions ORDER BY id DESC LIMIT ?",
         (limit,),
@@ -170,7 +170,7 @@ def _recent_activity(conn: sqlite3.Connection, limit: int = 30) -> list[dict[str
 
 
 def _weekly_chart(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """최근 7일 일별 활동 수."""
+    """Daily activity counts for the last 7 days."""
     now = datetime.now(timezone.utc)
     chart = []
     for i in range(6, -1, -1):
@@ -184,7 +184,7 @@ def _weekly_chart(conn: sqlite3.Connection) -> list[dict[str, Any]]:
 
 
 def _totals(conn: sqlite3.Connection) -> dict[str, Any]:
-    """전체 집계."""
+    """Overall totals."""
     actions = conn.execute("SELECT COUNT(*) FROM actions").fetchone()[0]
     seen = conn.execute("SELECT COUNT(*) FROM seen_posts").fetchone()[0]
     replies = conn.execute("SELECT COUNT(*) FROM replies").fetchone()[0]

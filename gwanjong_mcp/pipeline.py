@@ -1,4 +1,4 @@
-"""scout/draft/strike 파이프라인 로직."""
+"""Scout/draft/strike pipeline logic."""
 
 from __future__ import annotations
 
@@ -25,21 +25,21 @@ _SPAM_KEYWORDS = {
 
 
 def _is_spam(post: Post) -> bool:
-    """크립토/스팸 트윗 필터링."""
+    """Filter out crypto/spam tweets."""
     text = f"{post.title} {post.body}".lower()
     hits = sum(1 for kw in _SPAM_KEYWORDS if kw in text)
     return hits >= 3
 
 
 def _is_reply_restricted(post: Post) -> bool:
-    """Twitter 답글 제한 트윗 필터링. 다른 플랫폼은 항상 False."""
+    """Filter reply-restricted tweets on Twitter. Always returns False for other platforms."""
     if post.platform != "twitter":
         return False
     return post.raw.get("reply_settings", "everyone") != "everyone"
 
 
 def _score_relevance(post: Post, topic: str) -> float:
-    """게시글의 주제 관련성 점수 (0.0 ~ 1.0). 플랫폼별 가중치 적용."""
+    """Score topic relevance of a post (0.0 to 1.0). Applies platform-specific weights."""
     score = 0.0
     topic_lower = topic.lower()
     words = topic_lower.split()
@@ -109,7 +109,7 @@ def _score_relevance(post: Post, topic: str) -> float:
 
 
 def _generate_reason(post: Post, topic: str, score: float) -> str:
-    """기회 선정 이유를 생성."""
+    """Generate the reason for selecting an opportunity."""
     parts: list[str] = []
     if score >= 0.7:
         parts.append("주제 직접 관련")
@@ -130,7 +130,7 @@ async def scout(
     limit: int = 5,
     bus: EventBus | None = None,
 ) -> tuple[dict[str, Opportunity], dict[str, Any]]:
-    """정찰: trending + search → 점수화 → 상위 N개 기회 반환.
+    """Scout: trending + search -> score -> return top N opportunities.
 
     Returns:
         (opportunities_dict, compressed_response)
@@ -224,10 +224,10 @@ async def draft(
     opportunity: Opportunity,
     bus: EventBus | None = None,
 ) -> tuple[DraftContext, dict[str, Any]]:
-    """초안 준비: 게시글 + 댓글 트리 + 분위기 분석.
+    """Prepare draft: post + comment tree + tone analysis.
 
-    Twitter는 get_post를 Playwright 스크래핑으로 대체 (API 비용 절감).
-    댓글은 비로그인 스크래핑 불가 → API 유지.
+    Twitter replaces get_post with Playwright scraping (saves API costs).
+    Comments cannot be scraped without login, so API is still used.
 
     Returns:
         (draft_context, compressed_response)
@@ -285,10 +285,10 @@ async def draft(
 async def _draft_twitter(
     opportunity: Opportunity, adapter_cls: type,
 ) -> tuple[Post, list[Any]]:
-    """Twitter draft: get_post는 스크래핑, get_comments는 API.
+    """Twitter draft: get_post via scraping, get_comments via API.
 
-    비로그인 스크래핑으로 get_post API 호출 1건 절감.
-    댓글은 비로그인 접근 불가 → API fallback.
+    Saves one get_post API call through unauthenticated scraping.
+    Comments require authentication, so API fallback is used.
     """
     from .scraper import get_tweet
 
@@ -327,7 +327,7 @@ async def strike(
     content: str,
     bus: EventBus | None = None,
 ) -> tuple[ActionRecord, dict[str, Any]]:
-    """실행: 댓글/게시글/교차게시 작성.
+    """Execute: write comment/post/crosspost.
 
     Returns:
         (action_record, compressed_response)
@@ -449,7 +449,7 @@ async def strike(
 
 
 def _analyze_tone(comments: list[str]) -> str:
-    """댓글 분위기를 간단 분석."""
+    """Simple tone analysis of comments."""
     if not comments:
         return "neutral"
 
@@ -481,7 +481,7 @@ PLATFORM_ACTIONS: dict[str, list[str]] = {
 
 
 def _suggest_approach(opp: Opportunity, comment_count: int) -> str:
-    """플랫폼 특성 + 토론 상태에 따른 추천 접근 방식."""
+    """Suggest approach based on platform characteristics and discussion state."""
     platform = opp.platform
 
     if platform == "devto":
@@ -508,7 +508,7 @@ def _suggest_approach(opp: Opportunity, comment_count: int) -> str:
 
 
 def _suggest_actions(opp: Opportunity, comment_count: int) -> list[str]:
-    """플랫폼별 추천 액션 목록 (우선순위 순)."""
+    """Suggested action list per platform (in priority order)."""
     platform = opp.platform
 
     if platform == "devto":
@@ -534,7 +534,7 @@ def _suggest_actions(opp: Opportunity, comment_count: int) -> list[str]:
 
 
 def _check_avoid(opp: Opportunity) -> list[str]:
-    """플랫폼별 주의사항 생성."""
+    """Generate platform-specific cautions."""
     avoid: list[str] = []
     if opp.platform == "devto":
         avoid.append("Don't just drop a link to your project — add value first")
@@ -567,14 +567,14 @@ WRITING_AVOID = [
 
 
 def _build_writing_guide(opp: Opportunity, tone: str, action: str = "comment") -> str:
-    """사람처럼 쓰기 위한 구체적 가이드. action에 따라 comment/post 분기."""
+    """Concrete writing guide for human-like tone. Branches into comment/post based on action."""
     if action == "post":
         return _build_post_guide(opp)
     return _build_comment_guide(opp, tone)
 
 
 def _build_comment_guide(opp: Opportunity, tone: str) -> str:
-    """댓글용 가이드."""
+    """Writing guide for comments."""
     guide = (
         "Write like a real developer leaving a comment, not an AI assistant.\n"
         "\n"
@@ -607,7 +607,7 @@ def _build_comment_guide(opp: Opportunity, tone: str) -> str:
 
 
 def _build_post_guide(opp: Opportunity) -> str:
-    """오리지널 게시글/트윗 작성 가이드."""
+    """Writing guide for original posts/tweets."""
     guide = (
         "You're chatting with fellow devs about something you built. Like a conversation, not a pitch.\n"
         "\n"

@@ -1,4 +1,4 @@
-"""gwanjong-mcp 서버 — PipelineMCP + 5 tools."""
+"""gwanjong-mcp server — PipelineMCP + 5 tools."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ if _env_path.exists():
 
 
 class GwanjongState(State):
-    """gwanjong-mcp 파이프라인 상태."""
+    """gwanjong-mcp pipeline state."""
 
     opportunities: dict[str, Any] = {}
     contexts: dict[str, Any] = {}
@@ -54,7 +54,7 @@ async def gwanjong_setup(
     credentials: dict[str, str] | None = None,
     state: GwanjongState | None = None,
 ) -> dict[str, Any]:
-    """플랫폼 온보딩. action: check(상태확인), guide(안내), save(키저장+테스트)."""
+    """Platform onboarding. action: check(status), guide(instructions), save(store keys+test)."""
     if action == "check":
         return setup.check_platforms()
 
@@ -88,7 +88,7 @@ async def gwanjong_scout(
     limit: int = 5,
     state: GwanjongState | None = None,
 ) -> dict[str, Any]:
-    """개발자 커뮤니티에서 관련 토론 정찰. 점수화된 상위 기회를 반환."""
+    """Scout relevant discussions from developer communities. Returns top scored opportunities."""
     opportunities, response = await pipeline.scout(topic, platforms, limit, bus=bus)
     # state에 직접 저장 (stores 데코레이터 대신 수동 — 반환값은 압축 응답이므로)
     if state is not None:
@@ -104,7 +104,7 @@ async def gwanjong_draft(
     opportunity_id: str,
     state: GwanjongState | None = None,
 ) -> dict[str, Any]:
-    """특정 기회의 전체 맥락 수집. 게시글, 댓글, 분위기 분석 결과를 반환."""
+    """Gather full context for a specific opportunity. Returns post, comments, and sentiment analysis."""
     if state is None or opportunity_id not in state.opportunities:
         return {"error": f"기회 '{opportunity_id}'를 찾을 수 없음. scout를 먼저 실행하세요."}
 
@@ -130,7 +130,7 @@ async def gwanjong_strike(
     content: str,
     state: GwanjongState | None = None,
 ) -> dict[str, Any]:
-    """실행: 댓글, 게시글, 또는 upvote. draft에서 캐시된 맥락 사용."""
+    """Execute: comment, post, or upvote. Uses context cached from draft."""
     if state is None or opportunity_id not in state.contexts:
         return {"error": f"맥락 '{opportunity_id}'을 찾을 수 없음. draft를 먼저 실행하세요."}
 
@@ -157,7 +157,7 @@ async def gwanjong_strike(
 
 
 def main() -> None:
-    """CLI 진입점."""
+    """CLI entry point."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",

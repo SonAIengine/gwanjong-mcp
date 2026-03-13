@@ -1,4 +1,4 @@
-"""자율 루프 엔진 — scout→draft→generate→strike 사이클. pipeline + events만 의존."""
+"""Autonomous loop engine — scout->draft->generate->strike cycle. Depends only on pipeline + events."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CycleConfig:
-    """사이클 설정."""
+    """Cycle configuration."""
 
     topics: list[str] = field(default_factory=lambda: ["MCP"])
     max_actions_per_cycle: int = 3
@@ -33,7 +33,7 @@ class CycleConfig:
 
 @dataclass
 class CycleResult:
-    """사이클 실행 결과."""
+    """Cycle execution result."""
 
     topic: str
     scanned: int = 0
@@ -47,9 +47,9 @@ class CycleResult:
 
 
 class AutonomousLoop:
-    """자율 사이클 엔진. pipeline + EventBus만 의존.
+    """Autonomous cycle engine. Depends only on pipeline + EventBus.
 
-    safety, memory 등은 EventBus를 통해 자동 개입.
+    Plugins like safety and memory intervene automatically via EventBus.
     """
 
     def __init__(
@@ -66,12 +66,12 @@ class AutonomousLoop:
         self._running = False
 
     async def run_cycle(self, topic: str) -> CycleResult:
-        """한 사이클: scout → draft → generate → strike.
+        """One cycle: scout -> draft -> generate -> strike.
 
-        safety/memory가 bus에 붙어 있으면 자동으로:
-        - strike.before에서 rate limit/content 체크 (차단 가능)
-        - scout.done에서 seen_posts 기록
-        - strike.after에서 이력 기록 + rate_log 기록
+        If safety/memory are attached to the bus, they automatically:
+        - Check rate limits/content on strike.before (may block)
+        - Record seen_posts on scout.done
+        - Log action history + rate_log on strike.after
         """
         result = CycleResult(topic=topic)
 
@@ -149,7 +149,7 @@ class AutonomousLoop:
     async def _process_opportunity(
         self, opp: Opportunity, result: CycleResult
     ) -> None:
-        """단일 기회 처리: draft → generate → strike."""
+        """Process a single opportunity: draft -> generate -> strike."""
         try:
             # draft
             ctx, draft_response = await pipeline.draft(opp, bus=self.bus)
@@ -211,11 +211,11 @@ class AutonomousLoop:
         interval_hours: float = 4.0,
         max_cycles: int | None = None,
     ) -> None:
-        """데몬 모드: 주기적으로 사이클 실행.
+        """Daemon mode: run cycles periodically.
 
         Args:
-            interval_hours: 사이클 간격 (시간)
-            max_cycles: 최대 사이클 수 (None이면 무한)
+            interval_hours: Interval between cycles (in hours)
+            max_cycles: Maximum number of cycles (None for unlimited)
         """
         self._running = True
         cycle_count = 0
@@ -255,5 +255,5 @@ class AutonomousLoop:
         logger.info("Daemon stopped")
 
     def stop(self) -> None:
-        """데몬 정지 요청."""
+        """Request daemon stop."""
         self._running = False
