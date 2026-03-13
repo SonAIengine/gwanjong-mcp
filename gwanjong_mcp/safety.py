@@ -9,7 +9,6 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from .events import Event, EventBus
 
@@ -19,8 +18,14 @@ DB_PATH = Path(os.getenv("GWANJONG_DB_PATH", str(Path.home() / ".gwanjong" / "me
 
 # AI가 흔히 쓰는 패턴
 AI_WORDS = {
-    "fascinating", "insightful", "resonates", "game-changer",
-    "deep dive", "kudos", "compelling", "groundbreaking",
+    "fascinating",
+    "insightful",
+    "resonates",
+    "game-changer",
+    "deep dive",
+    "kudos",
+    "compelling",
+    "groundbreaking",
 }
 
 AI_OPENERS = [
@@ -195,9 +200,7 @@ class Safety:
 
     # ── Content Guard ──
 
-    def validate_content(
-        self, content: str, platform: str = ""
-    ) -> tuple[bool, list[str]]:
+    def validate_content(self, content: str, platform: str = "") -> tuple[bool, list[str]]:
         """Validate content safety. Returns (passed, list of violations)."""
         violations: list[str] = []
         content_lower = content.lower()
@@ -215,7 +218,9 @@ class Safety:
 
         # 3. 칭찬→경험→질문 공식 탐지
         has_praise = any(w in content_lower for w in ("great", "amazing", "love", "awesome"))
-        has_experience = any(w in content_lower for w in ("in my experience", "i've found", "i tried"))
+        has_experience = any(
+            w in content_lower for w in ("in my experience", "i've found", "i tried")
+        )
         has_question = content.rstrip().endswith("?")
         if has_praise and has_experience and has_question:
             violations.append("Formulaic structure: praise→experience→question")
@@ -223,7 +228,9 @@ class Safety:
         # 4. 길이 검증
         max_lengths = {"twitter": 280, "bluesky": 300}
         if platform in max_lengths and len(content) > max_lengths[platform]:
-            violations.append(f"{platform} length exceeded ({len(content)}/{max_lengths[platform]})")
+            violations.append(
+                f"{platform} length exceeded ({len(content)}/{max_lengths[platform]})"
+            )
 
         # 5. 자기 홍보 비율 (URL 개수)
         url_count = len(re.findall(r"https?://", content))

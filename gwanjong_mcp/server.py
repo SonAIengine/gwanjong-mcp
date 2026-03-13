@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -16,8 +17,6 @@ from .safety import Safety
 from .tracker import Tracker
 
 logger = logging.getLogger(__name__)
-
-import os
 
 # Load .env (configurable via GWANJONG_ENV_PATH)
 _env_path = Path(os.getenv("GWANJONG_ENV_PATH", str(Path.home() / ".gwanjong" / ".env")))
@@ -145,13 +144,15 @@ async def gwanjong_strike(
 
     # 이력 기록
     if state is not None:
-        state.history.append({
-            "opportunity_id": opportunity_id,
-            "action": record.action,
-            "platform": record.platform,
-            "url": record.url,
-            "timestamp": record.timestamp,
-        })
+        state.history.append(
+            {
+                "opportunity_id": opportunity_id,
+                "action": record.action,
+                "platform": record.platform,
+                "url": record.url,
+                "timestamp": record.timestamp,
+            }
+        )
 
     return response
 

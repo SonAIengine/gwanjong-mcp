@@ -72,7 +72,10 @@ class Tracker:
         # Tracker는 scan 시 memory.actions를 읽으므로 여기서는 로깅만
         record = event.data.get("record")
         if record and getattr(record, "action", None) == "comment":
-            logger.debug("Tracker: comment posted, will track replies on next scan: %s", getattr(record, "url", ""))
+            logger.debug(
+                "Tracker: comment posted, will track replies on next scan: %s",
+                getattr(record, "url", ""),
+            )
 
     async def scan(
         self,
@@ -110,10 +113,12 @@ class Tracker:
         post_groups: dict[str, list[dict[str, str]]] = {}
         for row in rows:
             platform = row["platform"]
-            post_groups.setdefault(platform, []).append({
-                "post_url": row["post_url"],
-                "opportunity_id": row["opportunity_id"] or "",
-            })
+            post_groups.setdefault(platform, []).append(
+                {
+                    "post_url": row["post_url"],
+                    "opportunity_id": row["opportunity_id"] or "",
+                }
+            )
 
         # 3. 각 게시글의 댓글 트리를 가져와서 답글 감지
         all_replies: list[DetectedReply] = []
@@ -130,14 +135,19 @@ class Tracker:
 
         if bus and new_replies:
             for reply in new_replies:
-                await bus.emit(Event("reply.detected", {
-                    "comment_id": reply.comment_id,
-                    "platform": reply.platform,
-                    "post_url": reply.post_url,
-                    "author": reply.author,
-                    "body": reply.body,
-                    "post_title": reply.post_title,
-                }))
+                await bus.emit(
+                    Event(
+                        "reply.detected",
+                        {
+                            "comment_id": reply.comment_id,
+                            "platform": reply.platform,
+                            "post_url": reply.post_url,
+                            "author": reply.author,
+                            "body": reply.body,
+                            "post_title": reply.post_title,
+                        },
+                    )
+                )
 
         logger.info(
             "Tracker scan complete: %d posts scanned, %d new replies detected",
@@ -189,20 +199,23 @@ class Tracker:
                             and c.parent_id in my_comment_ids
                             and c.author.lower() != my_username.lower()
                         ):
-                            replies.append(DetectedReply(
-                                comment_id=c.id,
-                                platform=platform,
-                                post_url=post_info["post_url"],
-                                parent_comment_id=c.parent_id,
-                                author=c.author,
-                                body=c.body,
-                                post_title=post_title,
-                            ))
+                            replies.append(
+                                DetectedReply(
+                                    comment_id=c.id,
+                                    platform=platform,
+                                    post_url=post_info["post_url"],
+                                    parent_comment_id=c.parent_id,
+                                    author=c.author,
+                                    body=c.body,
+                                    post_title=post_title,
+                                )
+                            )
 
                 except Exception:
                     logger.error(
                         "Tracker: 게시글 스캔 실패 (%s: %s)",
-                        platform, post_info.get("post_url", "?"),
+                        platform,
+                        post_info.get("post_url", "?"),
                         exc_info=True,
                     )
 
@@ -223,7 +236,15 @@ class Tracker:
                     conn.execute(
                         "INSERT INTO replies (comment_id, platform, post_url, parent_comment_id, author, body, detected_at) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (r.comment_id, r.platform, r.post_url, r.parent_comment_id, r.author, r.body, now),
+                        (
+                            r.comment_id,
+                            r.platform,
+                            r.post_url,
+                            r.parent_comment_id,
+                            r.author,
+                            r.body,
+                            now,
+                        ),
                     )
                     new.append(r)
                 except sqlite3.IntegrityError:
@@ -240,6 +261,7 @@ class Tracker:
             return self._usernames[platform]
 
         import os
+
         username_map: dict[str, str] = {
             "devto": os.getenv("DEVTO_USERNAME", ""),
             "bluesky": os.getenv("BLUESKY_HANDLE", ""),
@@ -257,7 +279,9 @@ class Tracker:
             return self._usernames["devto"]
 
         import os
+
         import httpx
+
         api_key = os.getenv("DEVTO_API_KEY", "")
         if not api_key:
             return ""
@@ -314,7 +338,9 @@ class Tracker:
         _ensure_replies_table(conn)
         try:
             total = conn.execute("SELECT COUNT(*) as cnt FROM replies").fetchone()["cnt"]
-            pending = conn.execute("SELECT COUNT(*) as cnt FROM replies WHERE responded = 0").fetchone()["cnt"]
+            pending = conn.execute(
+                "SELECT COUNT(*) as cnt FROM replies WHERE responded = 0"
+            ).fetchone()["cnt"]
             by_platform = conn.execute(
                 "SELECT platform, COUNT(*) as cnt FROM replies GROUP BY platform"
             ).fetchall()

@@ -101,7 +101,8 @@ def get_summary() -> dict:
                 "SELECT COUNT(*) FROM actions WHERE platform=?", (p,)
             ).fetchone()[0]
             actions_week = {
-                r["action"]: r["cnt"] for r in conn.execute(
+                r["action"]: r["cnt"]
+                for r in conn.execute(
                     "SELECT action, COUNT(*) as cnt FROM actions WHERE platform=? AND timestamp>=? GROUP BY action",
                     (p, week_ago),
                 ).fetchall()
@@ -109,11 +110,16 @@ def get_summary() -> dict:
             reply_cnt = conn.execute(
                 "SELECT COUNT(*) FROM replies WHERE platform=?", (p,)
             ).fetchone()[0]
-            platforms.append({
-                "platform": p, "today": today_cnt, "week": week_cnt,
-                "total": total_cnt, "actions_week": actions_week,
-                "replies_received": reply_cnt,
-            })
+            platforms.append(
+                {
+                    "platform": p,
+                    "today": today_cnt,
+                    "week": week_cnt,
+                    "total": total_cnt,
+                    "actions_week": actions_week,
+                    "replies_received": reply_cnt,
+                }
+            )
 
         # Rate limits + cooldown
         rate_limits = []
@@ -142,24 +148,28 @@ def get_summary() -> dict:
                 except (ValueError, TypeError):
                     pass
 
-            rate_limits.append({
-                "platform": p,
-                "comments": {"used": c_used, "max": limits["comments"]},
-                "posts": {"used": p_used, "max": limits["posts"]},
-                "last_action": last_ts,
-                "cooldown_remaining_min": round(cooldown_remaining, 1),
-                "in_cooldown": cooldown_remaining > 0,
-            })
+            rate_limits.append(
+                {
+                    "platform": p,
+                    "comments": {"used": c_used, "max": limits["comments"]},
+                    "posts": {"used": p_used, "max": limits["posts"]},
+                    "last_action": last_ts,
+                    "cooldown_remaining_min": round(cooldown_remaining, 1),
+                    "in_cooldown": cooldown_remaining > 0,
+                }
+            )
 
         # Pending replies
         pending_replies = [
-            dict(r) for r in conn.execute(
+            dict(r)
+            for r in conn.execute(
                 "SELECT * FROM replies WHERE responded=0 ORDER BY detected_at DESC LIMIT 20"
             ).fetchall()
         ]
 
         pending_approvals = [
-            dict(r) for r in conn.execute(
+            dict(r)
+            for r in conn.execute(
                 """
                 SELECT id, topic, platform, action, status, title, post_url, created_at
                 FROM approval_queue
@@ -171,7 +181,8 @@ def get_summary() -> dict:
         ]
 
         failed_approvals = [
-            dict(r) for r in conn.execute(
+            dict(r)
+            for r in conn.execute(
                 """
                 SELECT id, topic, platform, action, status, title, post_url, created_at, last_error
                 FROM approval_queue
@@ -183,16 +194,16 @@ def get_summary() -> dict:
         ]
 
         approval_stats_row = {
-            r["status"]: r["cnt"] for r in conn.execute(
+            r["status"]: r["cnt"]
+            for r in conn.execute(
                 "SELECT status, COUNT(*) AS cnt FROM approval_queue GROUP BY status"
             ).fetchall()
         }
 
         # Recent activity (content 포함)
         recent = [
-            dict(r) for r in conn.execute(
-                "SELECT * FROM actions ORDER BY id DESC LIMIT 30"
-            ).fetchall()
+            dict(r)
+            for r in conn.execute("SELECT * FROM actions ORDER BY id DESC LIMIT 30").fetchall()
         ]
 
         # Weekly chart — 플랫폼별 분리
@@ -219,19 +230,23 @@ def get_summary() -> dict:
                 "SELECT COUNT(*) FROM replies WHERE platform=?", (p,)
             ).fetchone()[0]
             rate = round(replies_got / comments_sent * 100, 1) if comments_sent > 0 else 0
-            engagement.append({
-                "platform": p,
-                "comments_sent": comments_sent,
-                "replies_received": replies_got,
-                "reply_rate": rate,
-            })
+            engagement.append(
+                {
+                    "platform": p,
+                    "comments_sent": comments_sent,
+                    "replies_received": replies_got,
+                    "reply_rate": rate,
+                }
+            )
 
         # Totals
         totals = {
             "total_actions": conn.execute("SELECT COUNT(*) FROM actions").fetchone()[0],
             "total_seen_posts": conn.execute("SELECT COUNT(*) FROM seen_posts").fetchone()[0],
             "total_replies": conn.execute("SELECT COUNT(*) FROM replies").fetchone()[0],
-            "pending_replies": conn.execute("SELECT COUNT(*) FROM replies WHERE responded=0").fetchone()[0],
+            "pending_replies": conn.execute(
+                "SELECT COUNT(*) FROM replies WHERE responded=0"
+            ).fetchone()[0],
             "pending_approvals": approval_stats_row.get("pending", 0),
             "posted_approvals": approval_stats_row.get("posted", 0),
         }

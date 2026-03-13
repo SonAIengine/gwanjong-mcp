@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any
 
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import Page, async_playwright
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +24,13 @@ _POST_LOAD_WAIT = 3000
 @dataclass
 class ScrapedTweet:
     """Scraped tweet data."""
+
     id: str
-    author: str          # @handle
+    author: str  # @handle
     display_name: str
     text: str
     url: str
-    created_at: str      # ISO 8601
+    created_at: str  # ISO 8601
     likes: int
     retweets: int
     replies: int
@@ -97,7 +96,8 @@ async def _scrape_tweet_page(page: Page, tweet_url: str) -> ScrapedTweet | None:
 
     try:
         await page.wait_for_selector(
-            'article[data-testid="tweet"]', timeout=_SELECTOR_TIMEOUT,
+            'article[data-testid="tweet"]',
+            timeout=_SELECTOR_TIMEOUT,
         )
     except Exception:
         logger.warning("article 로딩 실패: %s", tweet_url)
@@ -123,7 +123,9 @@ async def _scrape_tweet_page(page: Page, tweet_url: str) -> ScrapedTweet | None:
 
 
 async def _scrape_profile_page(
-    page: Page, username: str, limit: int,
+    page: Page,
+    username: str,
+    limit: int,
 ) -> list[ScrapedTweet]:
     """Parse tweet list from a profile page."""
     url = f"https://x.com/{username}"
@@ -131,7 +133,8 @@ async def _scrape_profile_page(
 
     try:
         await page.wait_for_selector(
-            'article[data-testid="tweet"]', timeout=_SELECTOR_TIMEOUT,
+            'article[data-testid="tweet"]',
+            timeout=_SELECTOR_TIMEOUT,
         )
     except Exception:
         logger.warning("프로필 트윗 로딩 실패: %s", username)
@@ -144,24 +147,27 @@ async def _scrape_profile_page(
 
     for _ in range(max_scrolls):
         raw_list = await page.eval_on_selector_all(
-            'article[data-testid="tweet"]', _JS_PARSE_TWEETS,
+            'article[data-testid="tweet"]',
+            _JS_PARSE_TWEETS,
         )
         for raw in raw_list:
             tid = raw.get("tweetId", "")
             if tid and tid not in seen_ids:
                 seen_ids.add(tid)
-                tweets.append(ScrapedTweet(
-                    id=tid,
-                    author=raw.get("handle", "").lstrip("@"),
-                    display_name=raw.get("displayName", ""),
-                    text=raw.get("text", ""),
-                    url=f"https://x.com/{username}/status/{tid}" if tid else "",
-                    created_at=raw.get("time", ""),
-                    likes=_parse_metric(raw.get("likeCount", "0")),
-                    retweets=_parse_metric(raw.get("retweetCount", "0")),
-                    replies=_parse_metric(raw.get("replyCount", "0")),
-                    views=_parse_metric(raw.get("viewCount", "0")),
-                ))
+                tweets.append(
+                    ScrapedTweet(
+                        id=tid,
+                        author=raw.get("handle", "").lstrip("@"),
+                        display_name=raw.get("displayName", ""),
+                        text=raw.get("text", ""),
+                        url=f"https://x.com/{username}/status/{tid}" if tid else "",
+                        created_at=raw.get("time", ""),
+                        likes=_parse_metric(raw.get("likeCount", "0")),
+                        retweets=_parse_metric(raw.get("retweetCount", "0")),
+                        replies=_parse_metric(raw.get("replyCount", "0")),
+                        views=_parse_metric(raw.get("viewCount", "0")),
+                    )
+                )
             if len(tweets) >= limit:
                 return tweets
 
@@ -284,6 +290,7 @@ def _parse_metric(value: str) -> int:
         return 0
     # aria-label에서 숫자 추출: "123 replies" → "123"
     import re
+
     numbers = re.findall(r"[\d,]+\.?\d*[KkMm]?", value)
     if not numbers:
         return 0

@@ -6,11 +6,13 @@ import logging
 import os
 from pathlib import Path
 
-from playwright.async_api import async_playwright, BrowserContext
+from playwright.async_api import BrowserContext, async_playwright
 
 logger = logging.getLogger(__name__)
 
-BROWSER_DATA_DIR = Path(os.getenv("GWANJONG_BROWSER_DATA_DIR", str(Path.home() / ".gwanjong" / "browser-data")))
+BROWSER_DATA_DIR = Path(
+    os.getenv("GWANJONG_BROWSER_DATA_DIR", str(Path.home() / ".gwanjong" / "browser-data"))
+)
 DEVTO_BASE = "https://dev.to"
 
 
@@ -91,7 +93,10 @@ async def devto_write_comment(article_id: str, article_url: str, body: str) -> d
             # headful로 로그인 시도
             login_result = await login_interactive()
             if login_result["status"] != "ok":
-                return {"status": "fail", "message": "Dev.to login required. " + login_result["message"]}
+                return {
+                    "status": "fail",
+                    "message": "Dev.to login required. " + login_result["message"],
+                }
             # 재연결
             pw, context = await _get_context()
 

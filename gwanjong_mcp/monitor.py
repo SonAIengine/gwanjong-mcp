@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-
-import os
 
 from .memory import DB_PATH as _DEFAULT_DB_PATH
 from .memory import _get_db
@@ -85,14 +84,16 @@ def _platform_stats(conn: sqlite3.Connection) -> list[dict[str, Any]]:
             (p,),
         ).fetchone()
 
-        stats.append({
-            "platform": p,
-            "today": today_row[0] if today_row else 0,
-            "week": week_row[0] if week_row else 0,
-            "total": total_row[0] if total_row else 0,
-            "actions_week": {r[0]: r[1] for r in action_rows},
-            "replies_received": reply_row[0] if reply_row else 0,
-        })
+        stats.append(
+            {
+                "platform": p,
+                "today": today_row[0] if today_row else 0,
+                "week": week_row[0] if week_row else 0,
+                "total": total_row[0] if total_row else 0,
+                "actions_week": {r[0]: r[1] for r in action_rows},
+                "replies_received": reply_row[0] if reply_row else 0,
+            }
+        )
     return stats
 
 
@@ -119,13 +120,15 @@ def _rate_limit_status(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         comments_used = comment_row[0] if comment_row else 0
         posts_used = post_row[0] if post_row else 0
 
-        limits.append({
-            "platform": p,
-            "comments": {"used": comments_used, "max": limit.max_comments_per_day},
-            "posts": {"used": posts_used, "max": limit.max_posts_per_day},
-            "cooldown_minutes": limit.min_interval_minutes,
-            "last_action": last_row[0] if last_row else None,
-        })
+        limits.append(
+            {
+                "platform": p,
+                "comments": {"used": comments_used, "max": limit.max_comments_per_day},
+                "posts": {"used": posts_used, "max": limit.max_posts_per_day},
+                "cooldown_minutes": limit.min_interval_minutes,
+                "last_action": last_row[0] if last_row else None,
+            }
+        )
     return limits
 
 

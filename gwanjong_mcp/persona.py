@@ -11,7 +11,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = Path(os.getenv("GWANJONG_PERSONA_PATH", str(Path.home() / ".gwanjong" / "persona.json")))
+CONFIG_PATH = Path(
+    os.getenv("GWANJONG_PERSONA_PATH", str(Path.home() / ".gwanjong" / "persona.json"))
+)
 
 # 기본 페르소나 (persona.json 없을 때 사용)
 _DEFAULTS: dict[str, dict[str, Any]] = {
@@ -88,10 +90,15 @@ class PersonaManager:
                         style=config.get("style", ""),
                         max_length=config.get("max_length", 500),
                         language=config.get("language", "en"),
-                        extra={k: v for k, v in config.items()
-                               if k not in ("tone", "style", "max_length", "language")},
+                        extra={
+                            k: v
+                            for k, v in config.items()
+                            if k not in ("tone", "style", "max_length", "language")
+                        },
                     )
-                logger.info("Persona loaded from %s (%d platforms)", self._config_path, len(self._personas))
+                logger.info(
+                    "Persona loaded from %s (%d platforms)", self._config_path, len(self._personas)
+                )
                 return
             except Exception:
                 logger.warning("Failed to load persona.json, using defaults", exc_info=True)

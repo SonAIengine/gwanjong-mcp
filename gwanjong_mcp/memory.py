@@ -83,10 +83,18 @@ class Memory:
         conn = _get_db(self._db_path)
         try:
             url = record.url if hasattr(record, "url") else record.get("url", "")
-            platform = record.platform if hasattr(record, "platform") else record.get("platform", "")
+            platform = (
+                record.platform if hasattr(record, "platform") else record.get("platform", "")
+            )
             action = record.action if hasattr(record, "action") else record.get("action", "")
-            opp_id = record.opportunity_id if hasattr(record, "opportunity_id") else record.get("opportunity_id", "")
-            timestamp = record.timestamp if hasattr(record, "timestamp") else record.get("timestamp", "")
+            opp_id = (
+                record.opportunity_id
+                if hasattr(record, "opportunity_id")
+                else record.get("opportunity_id", "")
+            )
+            timestamp = (
+                record.timestamp if hasattr(record, "timestamp") else record.get("timestamp", "")
+            )
 
             content = event.data.get("content", "")
 

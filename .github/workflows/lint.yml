@@ -21,6 +21,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[all,dev]"
+          pip install aiohttp async_lru oauthlib
 
       - name: Ruff check
         run: ruff check gwanjong_mcp/

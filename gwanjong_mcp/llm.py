@@ -9,12 +9,10 @@ import shutil
 from typing import Any
 
 from .persona import Persona, PersonaManager
+from .pipeline import WRITING_AVOID, _build_writing_guide
 from .types import DraftContext
 
 logger = logging.getLogger(__name__)
-
-# pipeline.py의 writing guide를 재사용
-from .pipeline import _build_writing_guide, WRITING_AVOID
 
 
 class CommentGenerator:
@@ -46,9 +44,7 @@ class CommentGenerator:
         # anthropic SDK + API key
         if os.getenv("ANTHROPIC_API_KEY"):
             return "sdk"
-        raise RuntimeError(
-            "No LLM backend available. Install claude CLI or set ANTHROPIC_API_KEY."
-        )
+        raise RuntimeError("No LLM backend available. Install claude CLI or set ANTHROPIC_API_KEY.")
 
     async def generate(
         self,
@@ -71,9 +67,13 @@ class CommentGenerator:
         full_prompt = f"{system_prompt}\n\n---\n\n{user_prompt}"
 
         cmd = [
-            "claude", "-p", full_prompt,
-            "--model", self.model,
-            "--max-turns", "1",
+            "claude",
+            "-p",
+            full_prompt,
+            "--model",
+            self.model,
+            "--max-turns",
+            "1",
         ]
 
         # Claude Code 중첩 세션 차단 우회
@@ -95,7 +95,9 @@ class CommentGenerator:
         content = stdout.decode().strip()
         logger.info(
             "Generated comment (CLI): %d chars, model=%s, platform=%s",
-            len(content), self.model, ctx.platform,
+            len(content),
+            self.model,
+            ctx.platform,
         )
         return content
 
@@ -130,21 +132,32 @@ class CommentGenerator:
         content = response.content[0].text.strip()
         logger.info(
             "Generated comment (SDK): %d chars, model=%s, platform=%s",
-            len(content), self.model, ctx.platform,
+            len(content),
+            self.model,
+            ctx.platform,
         )
         return content
 
     # ── 프롬프트 빌더 ──
 
     def _build_system_prompt(
-        self, ctx: DraftContext, persona: Persona, action: str = "comment",
+        self,
+        ctx: DraftContext,
+        persona: Persona,
+        action: str = "comment",
     ) -> str:
         """Build the system prompt."""
         from .types import Opportunity
+
         fake_opp = Opportunity(
-            id=ctx.opportunity_id, platform=ctx.platform,
-            post_id="", title=ctx.title, url="",
-            relevance=0, comments_count=0, reason="",
+            id=ctx.opportunity_id,
+            platform=ctx.platform,
+            post_id="",
+            title=ctx.title,
+            url="",
+            relevance=0,
+            comments_count=0,
+            reason="",
         )
         writing_guide = _build_writing_guide(fake_opp, ctx.tone, action=action)
         avoid = "\n".join(f"- {a}" for a in WRITING_AVOID)

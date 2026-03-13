@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Any
 
 from . import pipeline
 from .approval import ApprovalQueue
@@ -101,7 +100,8 @@ class AutonomousLoop:
         if len(filtered) < len(opportunities):
             logger.info(
                 "중복 필터링: %d → %d (이미 활동한 %d건 제외)",
-                len(opportunities), len(filtered),
+                len(opportunities),
+                len(filtered),
                 len(opportunities) - len(filtered),
             )
 
@@ -132,7 +132,9 @@ class AutonomousLoop:
                 for reply in new_replies:
                     logger.info(
                         "새 답글 감지: %s @%s → '%s'",
-                        reply.platform, reply.author, reply.body[:80],
+                        reply.platform,
+                        reply.author,
+                        reply.body[:80],
                     )
             except Exception as e:
                 result.errors.append(f"reply scan 실패: {e}")
@@ -140,15 +142,17 @@ class AutonomousLoop:
 
         logger.info(
             "Cycle done: topic='%s', scanned=%d, attempted=%d, queued=%d, succeeded=%d, blocked=%d, replies=%d",
-            topic, result.scanned, result.actions_attempted,
-            result.actions_queued, result.actions_succeeded,
-            result.actions_blocked, result.replies_detected,
+            topic,
+            result.scanned,
+            result.actions_attempted,
+            result.actions_queued,
+            result.actions_succeeded,
+            result.actions_blocked,
+            result.replies_detected,
         )
         return result
 
-    async def _process_opportunity(
-        self, opp: Opportunity, result: CycleResult
-    ) -> None:
+    async def _process_opportunity(self, opp: Opportunity, result: CycleResult) -> None:
         """Process a single opportunity: draft -> generate -> strike."""
         try:
             # draft
@@ -176,13 +180,18 @@ class AutonomousLoop:
                 content=content,
             )
             result.actions_queued += 1
-            await self.bus.emit(Event("approval.queued", {
-                "item_id": item.id,
-                "topic": result.topic,
-                "platform": opp.platform,
-                "action": ctx.suggested_approach,
-                "title": opp.title,
-            }))
+            await self.bus.emit(
+                Event(
+                    "approval.queued",
+                    {
+                        "item_id": item.id,
+                        "topic": result.topic,
+                        "platform": opp.platform,
+                        "action": ctx.suggested_approach,
+                        "title": opp.title,
+                    },
+                )
+            )
             logger.info("승인 대기 등록: #%d %s — %s", item.id, opp.platform, opp.title[:50])
             return
 
@@ -192,11 +201,19 @@ class AutonomousLoop:
             # context의 opportunity_id를 실제 post_id로 교체
             ctx.opportunity_id = opp.post_id
             record, response = await pipeline.strike(
-                ctx, ctx.suggested_approach, content, bus=self.bus,
+                ctx,
+                ctx.suggested_approach,
+                content,
+                bus=self.bus,
             )
             if response.get("status") == "posted":
                 result.actions_succeeded += 1
-                logger.info("Strike 성공: %s %s → %s", opp.platform, ctx.suggested_approach, response.get("url", ""))
+                logger.info(
+                    "Strike 성공: %s %s → %s",
+                    opp.platform,
+                    ctx.suggested_approach,
+                    response.get("url", ""),
+                )
             else:
                 result.errors.append(f"strike 실패 ({opp.id}): {response.get('error', 'unknown')}")
         except Blocked as e:
@@ -222,7 +239,8 @@ class AutonomousLoop:
 
         logger.info(
             "Daemon started: topics=%s, interval=%.1fh",
-            self.config.topics, interval_hours,
+            self.config.topics,
+            interval_hours,
         )
 
         while self._running:
@@ -233,8 +251,10 @@ class AutonomousLoop:
                     result = await self.run_cycle(topic)
                     logger.info(
                         "Cycle %d/%s: %d/%d succeeded",
-                        cycle_count + 1, topic,
-                        result.actions_succeeded, result.actions_attempted,
+                        cycle_count + 1,
+                        topic,
+                        result.actions_succeeded,
+                        result.actions_attempted,
                     )
                 except Exception:
                     logger.error("Cycle 에러: topic=%s", topic, exc_info=True)

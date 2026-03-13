@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,8 +15,6 @@ from .events import EventBus
 from .llm import CommentGenerator
 from .memory import Memory
 from .safety import Safety
-
-import os
 
 # Load .env (configurable via GWANJONG_ENV_PATH)
 _env_path = Path(os.getenv("GWANJONG_ENV_PATH", str(Path.home() / ".gwanjong" / ".env")))
@@ -30,13 +29,15 @@ def main() -> None:
         description="gwanjong autonomous social agent daemon",
     )
     parser.add_argument(
-        "--topics", "-t",
+        "--topics",
+        "-t",
         type=str,
         default="MCP",
         help="comma-separated topics (default: MCP)",
     )
     parser.add_argument(
-        "--interval", "-i",
+        "--interval",
+        "-i",
         type=float,
         default=4.0,
         help="cycle interval in hours (default: 4.0)",
@@ -76,7 +77,8 @@ def main() -> None:
         help="scout + draft only, skip strike",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="enable debug logging",
     )

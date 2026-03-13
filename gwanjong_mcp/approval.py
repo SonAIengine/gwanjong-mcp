@@ -44,9 +44,7 @@ def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
             last_error TEXT
         )
     """)
-    columns = {
-        row["name"] for row in conn.execute("PRAGMA table_info(approval_queue)").fetchall()
-    }
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(approval_queue)").fetchall()}
     if "executed_at" not in columns:
         conn.execute("ALTER TABLE approval_queue ADD COLUMN executed_at TEXT")
     if "last_error" not in columns:
@@ -232,11 +230,16 @@ class ApprovalQueue:
                 executed_at=datetime.now(timezone.utc).isoformat(),
                 last_error=str(exc),
             )
-            await queue_bus.emit(Event("approval.executed", {
-                "item_id": item["id"],
-                "status": "failed",
-                "error": str(exc),
-            }))
+            await queue_bus.emit(
+                Event(
+                    "approval.executed",
+                    {
+                        "item_id": item["id"],
+                        "status": "failed",
+                        "error": str(exc),
+                    },
+                )
+            )
             raise
 
         status = "posted" if response.get("status") == "posted" else "failed"
@@ -246,12 +249,17 @@ class ApprovalQueue:
             executed_at=datetime.now(timezone.utc).isoformat(),
             last_error=response.get("error"),
         )
-        await queue_bus.emit(Event("approval.executed", {
-            "item_id": item["id"],
-            "status": status,
-            "response": response,
-            "record": asdict(record) if is_dataclass(record) else dict(vars(record)),
-        }))
+        await queue_bus.emit(
+            Event(
+                "approval.executed",
+                {
+                    "item_id": item["id"],
+                    "status": status,
+                    "response": response,
+                    "record": asdict(record) if is_dataclass(record) else dict(vars(record)),
+                },
+            )
+        )
         return {
             "id": item["id"],
             "queue_status": status,

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +55,7 @@ class EventBus:
             try:
                 result = await handler(event)
                 if is_before and result is False:
-                    raise Blocked(
-                        f"{event.type} blocked by {handler.__qualname__}"
-                    )
+                    raise Blocked(f"{event.type} blocked by {handler.__qualname__}")
             except Blocked:
                 raise
             except Exception:

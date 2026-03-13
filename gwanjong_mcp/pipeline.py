@@ -18,9 +18,25 @@ logger = logging.getLogger(__name__)
 
 
 _SPAM_KEYWORDS = {
-    "whale", "token", "$", "sol", "solana", "nft", "airdrop",
-    "pump", "moon", "degen", "buy", "sell", "market cap",
-    "ca:", "txs", "mcap", "🐳", "💎", "🚀",
+    "whale",
+    "token",
+    "$",
+    "sol",
+    "solana",
+    "nft",
+    "airdrop",
+    "pump",
+    "moon",
+    "degen",
+    "buy",
+    "sell",
+    "market cap",
+    "ca:",
+    "txs",
+    "mcap",
+    "🐳",
+    "💎",
+    "🚀",
 }
 
 
@@ -184,24 +200,32 @@ async def scout(
             suggested_actions=_suggest_actions(
                 # 임시 Opportunity로 actions 계산 (raw 필요)
                 Opportunity(
-                    id=opp_id, platform=post.platform, post_id=post.id,
-                    title="", url="", relevance=0, comments_count=post.comments_count,
-                    reason="", raw={"likes": post.likes},
+                    id=opp_id,
+                    platform=post.platform,
+                    post_id=post.id,
+                    title="",
+                    url="",
+                    relevance=0,
+                    comments_count=post.comments_count,
+                    reason="",
+                    raw={"likes": post.likes},
                 ),
                 post.comments_count,
             ),
             raw={"author": post.author, "likes": post.likes, "tags": post.tags},
         )
         opportunities[opp_id] = opp
-        compressed.append({
-            "id": opp_id,
-            "platform": opp.platform,
-            "title": opp.title,
-            "relevance": opp.relevance,
-            "comments": opp.comments_count,
-            "reason": opp.reason,
-            "actions": opp.suggested_actions,
-        })
+        compressed.append(
+            {
+                "id": opp_id,
+                "platform": opp.platform,
+                "title": opp.title,
+                "relevance": opp.relevance,
+                "comments": opp.comments_count,
+                "reason": opp.reason,
+                "actions": opp.suggested_actions,
+            }
+        )
 
     platforms_found = len({o.platform for o in opportunities.values()})
     response = {
@@ -211,11 +235,16 @@ async def scout(
     }
 
     if bus:
-        await bus.emit(Event("scout.done", {
-            "topic": topic,
-            "count": len(opportunities),
-            "opportunities": opportunities,
-        }))
+        await bus.emit(
+            Event(
+                "scout.done",
+                {
+                    "topic": topic,
+                    "count": len(opportunities),
+                    "opportunities": opportunities,
+                },
+            )
+        )
 
     return opportunities, response
 
@@ -273,17 +302,23 @@ async def draft(
     }
 
     if bus:
-        await bus.emit(Event("draft.done", {
-            "opportunity_id": opportunity.id,
-            "platform": opportunity.platform,
-            "context": ctx,
-        }))
+        await bus.emit(
+            Event(
+                "draft.done",
+                {
+                    "opportunity_id": opportunity.id,
+                    "platform": opportunity.platform,
+                    "context": ctx,
+                },
+            )
+        )
 
     return ctx, response
 
 
 async def _draft_twitter(
-    opportunity: Opportunity, adapter_cls: type,
+    opportunity: Opportunity,
+    adapter_cls: type,
 ) -> tuple[Post, list[Any]]:
     """Twitter draft: get_post via scraping, get_comments via API.
 
@@ -334,12 +369,17 @@ async def strike(
     """
     # strike.before 이벤트 — safety 등 플러그인이 차단 가능
     if bus:
-        await bus.emit(Event("strike.before", {
-            "platform": context.platform,
-            "action": action,
-            "content": content,
-            "context": context,
-        }))
+        await bus.emit(
+            Event(
+                "strike.before",
+                {
+                    "platform": context.platform,
+                    "action": action,
+                    "content": content,
+                    "context": context,
+                },
+            )
+        )
 
     cls = get_adapter_class(context.platform)
 
@@ -358,12 +398,15 @@ async def strike(
         ), {
             "error": f"{context.platform}에서 '{action}'은 허용되지 않음",
             "allowed_actions": allowed,
-            "reason": "reddit은 self-promo 금지" if context.platform == "reddit" and action == "post" else "플랫폼 정책",
+            "reason": "reddit은 self-promo 금지"
+            if context.platform == "reddit" and action == "post"
+            else "플랫폼 정책",
         }
 
     # Dev.to comment는 API 미지원 → 브라우저 자동화
     if context.platform == "devto" and action == "comment":
         from .browser import devto_write_comment
+
         # context.opportunity_id는 server.py에서 실제 post_id로 교체된 상태
         article_url = f"https://dev.to/api/articles/{context.opportunity_id}"
         # 실제 URL을 가져와서 사용
@@ -392,11 +435,16 @@ async def strike(
         if browser_result["status"] != "ok":
             response["error"] = browser_result["message"]
         if bus:
-            await bus.emit(Event("strike.after", {
-                "record": record,
-                "response": response,
-                "content": content,
-            }))
+            await bus.emit(
+                Event(
+                    "strike.after",
+                    {
+                        "record": record,
+                        "response": response,
+                        "content": content,
+                    },
+                )
+            )
         return record, response
 
     adapter = cls()
@@ -420,7 +468,10 @@ async def strike(
                 platform=context.platform,
                 url="",
                 timestamp=datetime.now(timezone.utc).isoformat(),
-            ), {"error": f"지원하지 않는 action: {action}", "supported": ["comment", "post", "upvote"]}
+            ), {
+                "error": f"지원하지 않는 action: {action}",
+                "supported": ["comment", "post", "upvote"],
+            }
 
     record = ActionRecord(
         opportunity_id=context.opportunity_id,
@@ -439,11 +490,16 @@ async def strike(
         response["error"] = result.error
 
     if bus:
-        await bus.emit(Event("strike.after", {
-            "record": record,
-            "response": response,
-            "content": content,
-        }))
+        await bus.emit(
+            Event(
+                "strike.after",
+                {
+                    "record": record,
+                    "response": response,
+                    "content": content,
+                },
+            )
+        )
 
     return record, response
 
@@ -473,10 +529,10 @@ def _analyze_tone(comments: list[str]) -> str:
 
 # 플랫폼별 허용 액션
 PLATFORM_ACTIONS: dict[str, list[str]] = {
-    "devto": ["comment", "post"],       # 댓글 기여 + 글 발행 (핵심 거점)
-    "bluesky": ["comment", "post"],     # 리플 + 포스트 (네트워킹)
-    "twitter": ["comment", "post"],     # 리플 (visibility) + 트윗 (홍보)
-    "reddit": ["comment", "upvote"],    # 댓글만 (자기홍보 금지, post 차단)
+    "devto": ["comment", "post"],  # 댓글 기여 + 글 발행 (핵심 거점)
+    "bluesky": ["comment", "post"],  # 리플 + 포스트 (네트워킹)
+    "twitter": ["comment", "post"],  # 리플 (visibility) + 트윗 (홍보)
+    "reddit": ["comment", "upvote"],  # 댓글만 (자기홍보 금지, post 차단)
 }
 
 
