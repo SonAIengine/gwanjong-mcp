@@ -190,6 +190,32 @@ claude agent gwanjong
 > "Write a Dev.to post about mcp-pipeline"
 ```
 
+## Approval Workflow
+
+Autonomous mode can stop before posting and enqueue generated content for review.
+
+```bash
+# Queue content instead of posting immediately
+gwanjong-daemon --require-approval --max-cycles 1
+
+# Review pending items
+gwanjong-approval list
+gwanjong-approval show 1
+
+# Approve and execute strike immediately
+gwanjong-approval approve 1
+
+# Reject without posting
+gwanjong-approval reject 2
+```
+
+If you run the dashboard, pending approvals are also visible and actionable from the UI:
+
+```bash
+gwanjong-dashboard
+# open http://localhost:8585
+```
+
 ## Architecture
 
 ```
@@ -232,10 +258,11 @@ gwanjong-mcp/
 ## Development
 
 ```bash
-pytest                    # Tests
-mypy gwanjong_mcp/        # Type check
-ruff check gwanjong_mcp/  # Lint
-python run.py             # Local server
+./.venv/bin/python -m pytest -q                    # Default test suite (integration 제외)
+./.venv/bin/python -m pytest -m integration -q    # Playwright/network integration tests
+./.venv/bin/python -m mypy gwanjong_mcp/          # Type check
+./.venv/bin/python -m ruff check gwanjong_mcp/    # Lint
+./.venv/bin/python run.py                         # Local server
 ```
 
 ## License

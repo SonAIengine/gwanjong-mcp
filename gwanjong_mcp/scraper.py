@@ -49,6 +49,7 @@ async def get_tweet(tweet_url: str) -> ScrapedTweet | None:
         ScrapedTweet 또는 페이지 로딩 실패 시 None.
     """
     pw = await async_playwright().start()
+    browser = None
     try:
         browser = await pw.chromium.launch(headless=True)
         page = await browser.new_page()
@@ -57,7 +58,8 @@ async def get_tweet(tweet_url: str) -> ScrapedTweet | None:
         logger.exception("tweet 스크래핑 실패: %s", tweet_url)
         return None
     finally:
-        await browser.close()
+        if browser is not None:
+            await browser.close()
         await pw.stop()
 
 
@@ -72,6 +74,7 @@ async def get_profile_tweets(username: str, limit: int = 10) -> list[ScrapedTwee
         ScrapedTweet 리스트 (최신순).
     """
     pw = await async_playwright().start()
+    browser = None
     try:
         browser = await pw.chromium.launch(headless=True)
         page = await browser.new_page()
@@ -80,7 +83,8 @@ async def get_profile_tweets(username: str, limit: int = 10) -> list[ScrapedTwee
         logger.exception("프로필 스크래핑 실패: %s", username)
         return []
     finally:
-        await browser.close()
+        if browser is not None:
+            await browser.close()
         await pw.stop()
 
 

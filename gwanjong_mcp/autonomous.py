@@ -5,15 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any
 
 from . import pipeline
+from .approval import ApprovalQueue
 from .events import Blocked, Event, EventBus
 from .llm import CommentGenerator
 from .memory import Memory
 from .tracker import Tracker
-from .types import DraftContext, Opportunity
+from .types import Opportunity
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ class CycleResult:
     scanned: int = 0
     opportunities: int = 0
     actions_attempted: int = 0
+    actions_queued: int = 0
     actions_succeeded: int = 0
     actions_blocked: int = 0
     replies_detected: int = 0
@@ -56,10 +57,12 @@ class AutonomousLoop:
         bus: EventBus,
         llm: CommentGenerator | None = None,
         config: CycleConfig | None = None,
+        approval_queue: ApprovalQueue | None = None,
     ) -> None:
         self.bus = bus
         self.llm = llm or CommentGenerator()
         self.config = config or CycleConfig()
+        self.approval_queue = approval_queue or ApprovalQueue()
         self._running = False
 
     async def run_cycle(self, topic: str) -> CycleResult:
@@ -136,9 +139,10 @@ class AutonomousLoop:
                 logger.error("reply scan 실패", exc_info=True)
 
         logger.info(
-            "Cycle done: topic='%s', scanned=%d, attempted=%d, succeeded=%d, blocked=%d, replies=%d",
+            "Cycle done: topic='%s', scanned=%d, attempted=%d, queued=%d, succeeded=%d, blocked=%d, replies=%d",
             topic, result.scanned, result.actions_attempted,
-            result.actions_succeeded, result.actions_blocked, result.replies_detected,
+            result.actions_queued, result.actions_succeeded,
+            result.actions_blocked, result.replies_detected,
         )
         return result
 
@@ -164,8 +168,22 @@ class AutonomousLoop:
 
         # approval 체크
         if self.config.require_approval:
-            logger.info("승인 대기: %s — %s", opp.platform, opp.title[:50])
-            # TODO: approval queue 연동
+            item = self.approval_queue.enqueue(
+                topic=result.topic,
+                opportunity=opp,
+                context=ctx,
+                action=ctx.suggested_approach,
+                content=content,
+            )
+            result.actions_queued += 1
+            await self.bus.emit(Event("approval.queued", {
+                "item_id": item.id,
+                "topic": result.topic,
+                "platform": opp.platform,
+                "action": ctx.suggested_approach,
+                "title": opp.title,
+            }))
+            logger.info("승인 대기 등록: #%d %s — %s", item.id, opp.platform, opp.title[:50])
             return
 
         # strike

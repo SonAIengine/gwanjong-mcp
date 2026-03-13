@@ -38,6 +38,18 @@ Claude Code에서:
 4. strike("opp_0", action="comment", content="...") → 게시
 ```
 
+자율 모드에서는 승인 대기열을 사용할 수 있다:
+
+```bash
+gwanjong-daemon --require-approval --max-cycles 1
+gwanjong-approval list
+gwanjong-approval show 1
+gwanjong-approval approve 1
+gwanjong-approval reject 2
+```
+
+대시보드(`gwanjong-dashboard`)를 띄우면 pending approval을 보고 바로 approve/reject 할 수 있다.
+
 ---
 
 ## 활동 전략
@@ -166,4 +178,4 @@ strike action="post" 사용
 2. **동일 내용 복붙 금지** — 같은 댓글을 여러 글에 붙이면 바로 신고당함.
 3. **부정적 토론 회피** — 불꽃 논쟁에 끼어들지 않음. draft의 tone이 negative면 스킵.
 4. **가짜 계정 금지** — 하나의 진짜 계정으로만 활동.
-5. **strike 전 반드시 승인** — 에이전트가 쓴 내용을 사용자가 확인 후 게시.
+5. **strike 전 반드시 승인** — 자율 모드에서는 approval queue 또는 dashboard에서 확인 후 게시.

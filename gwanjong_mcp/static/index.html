@@ -105,6 +105,26 @@
   .reply-link { font-size: 11px; color: var(--text2); text-decoration: none; margin-top: 4px; display: inline-block; }
   .reply-link:hover { color: var(--accent); }
 
+  /* Approvals */
+  .approval-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .approval-item:last-child { border-bottom: none; }
+  .approval-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .approval-title { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .approval-meta { font-size: 11px; color: var(--text2); display: flex; gap: 8px; flex-wrap: wrap; }
+  .approval-status { font-size: 11px; color: var(--yellow); }
+  .approval-link { font-size: 11px; color: var(--text2); text-decoration: none; display: inline-block; margin-top: 4px; }
+  .approval-link:hover { color: var(--accent); }
+  .approval-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .approval-btn {
+    border: 1px solid var(--border); background: transparent; color: var(--text);
+    border-radius: 6px; padding: 5px 10px; font-size: 11px; cursor: pointer;
+  }
+  .approval-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .approval-btn.approve:hover { border-color: var(--green); color: var(--green); }
+  .approval-btn.reject:hover { border-color: var(--red); color: var(--red); }
+  .approval-note { font-size: 11px; color: var(--text2); margin-top: 6px; }
+  .approval-error { font-size: 11px; color: var(--red); margin-top: 6px; line-height: 1.4; }
+
   /* Timeline */
   .tl-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
   .tl-item:last-child { border-bottom: none; }
@@ -161,6 +181,10 @@
     <h3>Pending Replies</h3>
     <div id="pending-replies"></div>
   </div>
+  <div class="card">
+    <h3>Approval Queue</h3>
+    <div id="pending-approvals"></div>
+  </div>
 </div>
 
 <div class="card" style="margin-bottom: 24px;">
@@ -180,6 +204,20 @@ async function fetchData() {
   } catch(e) { console.error('Fetch failed:', e); }
 }
 
+async function handleApprovalAction(itemId, action) {
+  try {
+    const r = await fetch(`/api/approvals/${itemId}/${action}`, {method: 'POST'});
+    if (!r.ok) {
+      const text = await r.text();
+      throw new Error(text || `HTTP ${r.status}`);
+    }
+    await fetchData();
+  } catch (e) {
+    console.error('Approval action failed:', e);
+    window.alert(`Approval ${action} failed: ${e.message}`);
+  }
+}
+
 function render(d) {
   document.getElementById('updated-at').textContent = 'Updated: ' + new Date(d.generated_at).toLocaleTimeString('ko-KR');
   renderTotals(d.totals);
@@ -188,6 +226,7 @@ function render(d) {
   renderWeeklyChart(d.weekly_chart);
   renderEngagement(d.engagement);
   renderPendingReplies(d.pending_replies);
+  renderPendingApprovals(d.pending_approvals, d.failed_approvals, d.approval_stats);
   renderTimeline(d.recent_activity);
 }
 
@@ -196,7 +235,9 @@ function renderTotals(t) {
     <div class="total-item"><div class="num">${t.total_actions}</div><div class="label">Total Actions</div></div>
     <div class="total-item"><div class="num">${t.total_seen_posts}</div><div class="label">Posts Seen</div></div>
     <div class="total-item"><div class="num">${t.total_replies}</div><div class="label">Replies Received</div></div>
-    <div class="total-item"><div class="num">${t.pending_replies}</div><div class="label">Pending Replies</div></div>`;
+    <div class="total-item"><div class="num">${t.pending_replies}</div><div class="label">Pending Replies</div></div>
+    <div class="total-item"><div class="num">${t.pending_approvals}</div><div class="label">Pending Approvals</div></div>
+    <div class="total-item"><div class="num">${t.posted_approvals}</div><div class="label">Approved Posted</div></div>`;
 }
 
 function renderPlatformStats(platforms) {
@@ -286,6 +327,60 @@ function renderPendingReplies(replies) {
       <div class="reply-body">${esc(stripHtml(r.body))}</div>
       <a class="reply-link" href="${r.post_url}" target="_blank">${trunc(r.post_url,50)}</a>
     </div>`).join('');
+}
+
+function renderPendingApprovals(approvals, failed, stats) {
+  const el = document.getElementById('pending-approvals');
+  const s = stats || {pending:0, approved:0, rejected:0, executing:0, posted:0, failed:0};
+  if (!approvals.length && !failed.length) {
+    el.innerHTML = `<div class="empty">No pending approvals</div>
+      <div class="approval-meta" style="justify-content:center; padding-bottom: 12px;">
+        <span>approved ${s.approved}</span>
+        <span>executing ${s.executing}</span>
+        <span>posted ${s.posted}</span>
+        <span>failed ${s.failed}</span>
+      </div>`;
+    return;
+  }
+  const pendingHtml = approvals.slice(0,5).map(a => `
+    <div class="approval-item">
+      <div class="approval-header">
+        <span class="approval-title">${esc(a.title)}</span>
+        <span class="approval-status">pending</span>
+      </div>
+      <div class="approval-meta">
+        <span><span class="pi ${a.platform}"></span>${a.platform}</span>
+        <span>${a.action}</span>
+        <span>${esc(a.topic)}</span>
+        <span>${timeAgo(a.created_at)}</span>
+      </div>
+      <a class="approval-link" href="${a.post_url}" target="_blank">${trunc(a.post_url,50)}</a>
+      <div class="approval-actions">
+        <button class="approval-btn approve" onclick="handleApprovalAction(${a.id}, 'approve')">Approve & Post</button>
+        <button class="approval-btn reject" onclick="handleApprovalAction(${a.id}, 'reject')">Reject</button>
+      </div>
+      <div class="approval-note">Queue #${a.id}</div>
+    </div>`).join('');
+  const failedHtml = failed.slice(0,5).map(a => `
+    <div class="approval-item">
+      <div class="approval-header">
+        <span class="approval-title">${esc(a.title)}</span>
+        <span class="approval-status" style="color: var(--red);">failed</span>
+      </div>
+      <div class="approval-meta">
+        <span><span class="pi ${a.platform}"></span>${a.platform}</span>
+        <span>${a.action}</span>
+        <span>${esc(a.topic)}</span>
+        <span>${timeAgo(a.created_at)}</span>
+      </div>
+      <a class="approval-link" href="${a.post_url}" target="_blank">${trunc(a.post_url,50)}</a>
+      <div class="approval-error">${esc(trunc(a.last_error || 'Unknown error', 120))}</div>
+      <div class="approval-actions">
+        <button class="approval-btn approve" onclick="handleApprovalAction(${a.id}, 'retry')">Retry</button>
+      </div>
+      <div class="approval-note">Queue #${a.id}</div>
+    </div>`).join('');
+  el.innerHTML = pendingHtml + failedHtml;
 }
 
 function renderTimeline(activity) {

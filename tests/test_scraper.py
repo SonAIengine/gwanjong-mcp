@@ -1,6 +1,7 @@
 """scraper.py 테스트 — 유틸 함수 + Playwright 통합."""
 
 import pytest
+from playwright.async_api import async_playwright
 
 from gwanjong_mcp.scraper import (
     ScrapedTweet,
@@ -9,6 +10,19 @@ from gwanjong_mcp.scraper import (
     get_tweet,
     get_profile_tweets,
 )
+
+
+async def _ensure_playwright_launchable() -> None:
+    pw = await async_playwright().start()
+    browser = None
+    try:
+        browser = await pw.chromium.launch(headless=True)
+    except Exception as exc:
+        pytest.skip(f"Playwright browser launch unavailable in this environment: {exc}")
+    finally:
+        if browser is not None:
+            await browser.close()
+        await pw.stop()
 
 
 # ── 유닛 테스트: _extract_tweet_id ──
@@ -82,6 +96,7 @@ def test_parse_metric_empty():
 @pytest.mark.integration
 async def test_get_tweet_real():
     """실제 x.com 트윗 페이지 스크래핑."""
+    await _ensure_playwright_launchable()
     # AnthropicAI의 고정 트윗 사용 (삭제될 가능성 낮음)
     tweet = await get_tweet("https://x.com/AnthropicAI/status/2029999833717838016")
     assert tweet is not None
@@ -95,6 +110,7 @@ async def test_get_tweet_real():
 @pytest.mark.integration
 async def test_get_tweet_with_metrics():
     """메트릭(likes, retweets 등) 파싱 확인."""
+    await _ensure_playwright_launchable()
     tweet = await get_tweet("https://x.com/AnthropicAI/status/2029999833717838016")
     assert tweet is not None
     # AnthropicAI 트윗은 보통 likes가 있음
@@ -106,6 +122,7 @@ async def test_get_tweet_with_metrics():
 @pytest.mark.integration
 async def test_get_tweet_invalid_url():
     """존재하지 않는 트윗 → None."""
+    await _ensure_playwright_launchable()
     tweet = await get_tweet("https://x.com/nobody/status/9999999999999999999")
     assert tweet is None
 
@@ -113,6 +130,7 @@ async def test_get_tweet_invalid_url():
 @pytest.mark.integration
 async def test_get_profile_tweets_real():
     """실제 프로필 페이지 스크래핑."""
+    await _ensure_playwright_launchable()
     tweets = await get_profile_tweets("AnthropicAI", limit=3)
     assert len(tweets) > 0
     assert len(tweets) <= 3
@@ -126,5 +144,6 @@ async def test_get_profile_tweets_real():
 @pytest.mark.integration
 async def test_get_profile_tweets_empty_user():
     """트윗 없는 유저 → 빈 리스트."""
+    await _ensure_playwright_launchable()
     tweets = await get_profile_tweets("thisuserdoesnotexist99999", limit=3)
     assert tweets == []

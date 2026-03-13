@@ -57,6 +57,7 @@ dev = [
 gwanjong-mcp = "gwanjong_mcp.server:main"
 gwanjong-daemon = "gwanjong_mcp.daemon:main"
 gwanjong-dashboard = "gwanjong_mcp.dashboard:main"
+gwanjong-approval = "gwanjong_mcp.approval_cli:main"
 
 [project.urls]
 Homepage = "https://github.com/SonAIengine/gwanjong-mcp"
@@ -79,6 +80,7 @@ warn_unused_configs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-m 'not integration'"
 markers = [
     "integration: 네트워크 필요 (Playwright 스크래핑 등)",
 ]

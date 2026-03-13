@@ -14,6 +14,8 @@ from pathlib import Path
 
 from aiohttp import web
 
+from .approval import ApprovalQueue
+
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -54,6 +56,24 @@ def _get_db() -> sqlite3.Connection:
             post_url TEXT NOT NULL, parent_comment_id TEXT,
             author TEXT NOT NULL, body TEXT NOT NULL,
             detected_at TEXT NOT NULL, responded INTEGER DEFAULT 0
+        )""",
+        """CREATE TABLE IF NOT EXISTS approval_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            topic TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            action TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            opportunity_id TEXT NOT NULL,
+            post_id TEXT NOT NULL,
+            post_url TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            context_json TEXT NOT NULL,
+            opportunity_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            reviewed_at TEXT,
+            executed_at TEXT,
+            last_error TEXT
         )""",
     ]:
         conn.execute(ddl)
@@ -138,6 +158,36 @@ def get_summary() -> dict:
             ).fetchall()
         ]
 
+        pending_approvals = [
+            dict(r) for r in conn.execute(
+                """
+                SELECT id, topic, platform, action, status, title, post_url, created_at
+                FROM approval_queue
+                WHERE status='pending'
+                ORDER BY id DESC
+                LIMIT 20
+                """
+            ).fetchall()
+        ]
+
+        failed_approvals = [
+            dict(r) for r in conn.execute(
+                """
+                SELECT id, topic, platform, action, status, title, post_url, created_at, last_error
+                FROM approval_queue
+                WHERE status='failed'
+                ORDER BY id DESC
+                LIMIT 20
+                """
+            ).fetchall()
+        ]
+
+        approval_stats_row = {
+            r["status"]: r["cnt"] for r in conn.execute(
+                "SELECT status, COUNT(*) AS cnt FROM approval_queue GROUP BY status"
+            ).fetchall()
+        }
+
         # Recent activity (content 포함)
         recent = [
             dict(r) for r in conn.execute(
@@ -182,6 +232,8 @@ def get_summary() -> dict:
             "total_seen_posts": conn.execute("SELECT COUNT(*) FROM seen_posts").fetchone()[0],
             "total_replies": conn.execute("SELECT COUNT(*) FROM replies").fetchone()[0],
             "pending_replies": conn.execute("SELECT COUNT(*) FROM replies WHERE responded=0").fetchone()[0],
+            "pending_approvals": approval_stats_row.get("pending", 0),
+            "posted_approvals": approval_stats_row.get("posted", 0),
         }
 
         return {
@@ -189,6 +241,16 @@ def get_summary() -> dict:
             "platforms": platforms,
             "rate_limits": rate_limits,
             "pending_replies": pending_replies,
+            "pending_approvals": pending_approvals,
+            "failed_approvals": failed_approvals,
+            "approval_stats": {
+                "pending": approval_stats_row.get("pending", 0),
+                "approved": approval_stats_row.get("approved", 0),
+                "rejected": approval_stats_row.get("rejected", 0),
+                "executing": approval_stats_row.get("executing", 0),
+                "posted": approval_stats_row.get("posted", 0),
+                "failed": approval_stats_row.get("failed", 0),
+            },
             "recent_activity": recent,
             "weekly_chart": chart,
             "engagement": engagement,
@@ -203,6 +265,33 @@ async def handle_api_summary(request: web.Request) -> web.Response:
     return web.json_response(data)
 
 
+async def perform_approval_action(item_id: int, action: str) -> dict:
+    queue = ApprovalQueue(db_path=DB_PATH)
+
+    try:
+        if action == "approve":
+            return await queue.execute_approved(item_id)
+        if action == "retry":
+            return await queue.retry_failed(item_id)
+        if action == "reject":
+            item = queue.get_item(item_id)
+            if item is None:
+                raise web.HTTPNotFound(text=f"approval item not found: {item_id}")
+            queue.mark_rejected(item_id)
+            return {"id": item_id, "queue_status": "rejected"}
+    except ValueError as exc:
+        raise web.HTTPBadRequest(text=str(exc)) from exc
+
+    raise web.HTTPBadRequest(text=f"unsupported action: {action}")
+
+
+async def handle_api_approval_action(request: web.Request) -> web.Response:
+    item_id = int(request.match_info["item_id"])
+    action = request.match_info["action"]
+    result = await perform_approval_action(item_id, action)
+    return web.json_response(result)
+
+
 async def handle_index(request: web.Request) -> web.Response:
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
@@ -214,6 +303,7 @@ def create_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/summary", handle_api_summary)
+    app.router.add_post("/api/approvals/{item_id:\\d+}/{action}", handle_api_approval_action)
     if STATIC_DIR.exists():
         app.router.add_static("/static/", STATIC_DIR)
     return app
