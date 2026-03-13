@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = Path.home() / ".gwanjong" / "persona.json"
+CONFIG_PATH = Path(os.getenv("GWANJONG_PERSONA_PATH", str(Path.home() / ".gwanjong" / "persona.json")))
 
 # 기본 페르소나 (persona.json 없을 때 사용)
 _DEFAULTS: dict[str, dict[str, Any]] = {
@@ -93,7 +94,7 @@ class PersonaManager:
                 logger.info("Persona loaded from %s (%d platforms)", self._config_path, len(self._personas))
                 return
             except Exception:
-                logger.warning("persona.json 로드 실패, 기본값 사용", exc_info=True)
+                logger.warning("Failed to load persona.json, using defaults", exc_info=True)
 
         # 기본값
         for platform, config in _DEFAULTS.items():

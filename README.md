@@ -8,8 +8,46 @@ Engage developer communities authentically. Comment to connect, post to promote.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Test](https://github.com/SonAIengine/gwanjong-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/SonAIengine/gwanjong-mcp/actions/workflows/test.yml)
+[![Lint](https://github.com/SonAIengine/gwanjong-mcp/actions/workflows/lint.yml/badge.svg)](https://github.com/SonAIengine/gwanjong-mcp/actions/workflows/lint.yml)
+[![PyPI](https://img.shields.io/pypi/v/gwanjong-mcp)](https://pypi.org/project/gwanjong-mcp/)
 
 </div>
+
+---
+
+## Quick Start
+
+```bash
+# 1. Install
+pip install "gwanjong-mcp[all]"
+
+# 2. Configure at least one platform
+mkdir -p ~/.gwanjong
+cat > ~/.gwanjong/.env << 'EOF'
+DEVTO_API_KEY=your_key_here
+EOF
+
+# 3. Verify setup
+gwanjong-mcp  # starts MCP server (use with Claude Code, Cursor, etc.)
+```
+
+**With Claude Code:**
+
+```bash
+claude mcp add gwanjong-mcp -- gwanjong-mcp
+claude
+> "Find interesting MCP discussions and leave a helpful comment"
+```
+
+**Autonomous mode (no LLM client needed):**
+
+```bash
+pip install "gwanjong-mcp[all,autonomous]"
+gwanjong-daemon --topics "MCP,LLM" --dry-run --max-cycles 1
+```
+
+See [`.env.example`](.env.example) for all configuration options.
 
 ---
 

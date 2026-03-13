@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from playwright.async_api import async_playwright, BrowserContext
 
 logger = logging.getLogger(__name__)
 
-BROWSER_DATA_DIR = Path.home() / ".gwanjong" / "browser-data"
+BROWSER_DATA_DIR = Path(os.getenv("GWANJONG_BROWSER_DATA_DIR", str(Path.home() / ".gwanjong" / "browser-data")))
 DEVTO_BASE = "https://dev.to"
 
 
@@ -60,12 +61,11 @@ async def login_interactive() -> dict[str, str]:
             )
             # 로그인 후 메인 페이지 리다이렉트 대기
             await page.wait_for_selector("[data-testid='navbar-user']", timeout=15000)
-            return {"status": "ok", "message": "Dev.to 로그인 완료. 세션 저장됨."}
+            return {"status": "ok", "message": "Dev.to login successful. Session saved."}
         except Exception:
-            # 타임아웃이어도 URL이 바뀌었으면 성공일 수 있음
             if "/enter" not in page.url:
-                return {"status": "ok", "message": "Dev.to 로그인 완료 (추정). 세션 저장됨."}
-            return {"status": "fail", "message": "로그인 타임아웃. 다시 시도하세요."}
+                return {"status": "ok", "message": "Dev.to login likely successful. Session saved."}
+            return {"status": "fail", "message": "Login timed out. Please try again."}
     finally:
         await context.close()
         await pw.stop()
@@ -91,7 +91,7 @@ async def devto_write_comment(article_id: str, article_url: str, body: str) -> d
             # headful로 로그인 시도
             login_result = await login_interactive()
             if login_result["status"] != "ok":
-                return {"status": "fail", "message": "Dev.to 로그인 필요. " + login_result["message"]}
+                return {"status": "fail", "message": "Dev.to login required. " + login_result["message"]}
             # 재연결
             pw, context = await _get_context()
 
@@ -115,15 +115,15 @@ async def devto_write_comment(article_id: str, article_url: str, body: str) -> d
         error_el = page.locator(".crayons-notice--danger, .error-message")
         if await error_el.is_visible(timeout=1000):
             error_text = await error_el.text_content()
-            return {"status": "fail", "message": f"댓글 작성 실패: {error_text}", "url": ""}
+            return {"status": "fail", "message": f"Comment post failed: {error_text}", "url": ""}
 
         return {
             "status": "ok",
-            "message": "댓글 작성 완료",
+            "message": "Comment posted successfully",
             "url": article_url + "#comments",
         }
     except Exception as e:
-        logger.exception("Dev.to 댓글 작성 중 오류")
+        logger.exception("Error writing Dev.to comment")
         return {"status": "fail", "message": str(e), "url": ""}
     finally:
         await context.close()

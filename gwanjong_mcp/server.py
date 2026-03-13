@@ -17,8 +17,10 @@ from .tracker import Tracker
 
 logger = logging.getLogger(__name__)
 
-# ~/.gwanjong/.env 로드
-_env_path = Path.home() / ".gwanjong" / ".env"
+import os
+
+# Load .env (configurable via GWANJONG_ENV_PATH)
+_env_path = Path(os.getenv("GWANJONG_ENV_PATH", str(Path.home() / ".gwanjong" / ".env")))
 if _env_path.exists():
     load_dotenv(_env_path)
 

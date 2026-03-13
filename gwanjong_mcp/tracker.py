@@ -72,7 +72,7 @@ class Tracker:
         # Tracker는 scan 시 memory.actions를 읽으므로 여기서는 로깅만
         record = event.data.get("record")
         if record and getattr(record, "action", None) == "comment":
-            logger.debug("Tracker: 댓글 작성 감지, 다음 scan 시 답글 추적: %s", getattr(record, "url", ""))
+            logger.debug("Tracker: comment posted, will track replies on next scan: %s", getattr(record, "url", ""))
 
     async def scan(
         self,
@@ -103,7 +103,7 @@ class Tracker:
             conn.close()
 
         if not rows:
-            logger.info("Tracker: 추적할 댓글 이력 없음")
+            logger.info("Tracker: no comment history to track")
             return []
 
         # 2. 플랫폼별로 게시글 그룹화
@@ -123,7 +123,7 @@ class Tracker:
                 replies = await self._scan_platform(platform, posts)
                 all_replies.extend(replies)
             except Exception:
-                logger.error("Tracker: %s 스캔 실패", platform, exc_info=True)
+                logger.error("Tracker: %s scan failed", platform, exc_info=True)
 
         # 4. 새 답글을 DB에 저장하고 이벤트 발행
         new_replies = self._save_new_replies(all_replies)
@@ -140,7 +140,7 @@ class Tracker:
                 }))
 
         logger.info(
-            "Tracker scan 완료: %d개 게시글 스캔, %d개 새 답글 감지",
+            "Tracker scan complete: %d posts scanned, %d new replies detected",
             sum(len(p) for p in post_groups.values()),
             len(new_replies),
         )
@@ -158,7 +158,7 @@ class Tracker:
             my_username = await self._resolve_devto_username()
 
         if not my_username:
-            logger.warning("Tracker: %s 사용자명 불명 — 답글 감지 불가", platform)
+            logger.warning("Tracker: %s username unknown — cannot detect replies", platform)
             return []
 
         replies: list[DetectedReply] = []
@@ -271,10 +271,10 @@ class Tracker:
                 username = resp.json().get("username", "")
                 if username:
                     self._usernames["devto"] = username
-                    logger.info("Dev.to 사용자명 확인: %s", username)
+                    logger.info("Dev.to username resolved: %s", username)
                 return username
         except Exception:
-            logger.warning("Dev.to 사용자명 조회 실패", exc_info=True)
+            logger.warning("Failed to resolve Dev.to username", exc_info=True)
             return ""
 
     def get_pending_replies(self, platform: str | None = None) -> list[dict[str, Any]]:

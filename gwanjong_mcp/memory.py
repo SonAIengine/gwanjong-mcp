@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,7 @@ from .events import Event, EventBus
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path.home() / ".gwanjong" / "memory.db"
+DB_PATH = Path(os.getenv("GWANJONG_DB_PATH", str(Path.home() / ".gwanjong" / "memory.db")))
 
 
 def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:

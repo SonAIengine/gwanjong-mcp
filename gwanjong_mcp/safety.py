@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -14,7 +15,7 @@ from .events import Event, EventBus
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path.home() / ".gwanjong" / "memory.db"
+DB_PATH = Path(os.getenv("GWANJONG_DB_PATH", str(Path.home() / ".gwanjong" / "memory.db")))
 
 # AI가 흔히 쓰는 패턴
 AI_WORDS = {
@@ -145,7 +146,7 @@ class Safety:
             }.get(action, 3)
 
             if count >= max_per_day:
-                return False, f"{platform} {action} 일일 한도 초과 ({count}/{max_per_day})"
+                return False, f"{platform} {action} daily limit exceeded ({count}/{max_per_day})"
 
             # 최소 간격 체크
             row = conn.execute(
@@ -158,7 +159,7 @@ class Safety:
                 elapsed = (now - last).total_seconds() / 60
                 if elapsed < limit.min_interval_minutes:
                     remaining = limit.min_interval_minutes - elapsed
-                    return False, f"{platform} 쿨다운 중 ({remaining:.0f}분 남음)"
+                    return False, f"{platform} cooldown active ({remaining:.0f}min remaining)"
 
             return True, ""
         finally:
@@ -204,12 +205,12 @@ class Safety:
         # 1. AI 단어 탐지
         found_ai = [w for w in AI_WORDS if w in content_lower]
         if found_ai:
-            violations.append(f"AI 패턴 단어: {', '.join(found_ai)}")
+            violations.append(f"AI pattern words: {', '.join(found_ai)}")
 
         # 2. AI 오프너 탐지
         for pattern in AI_OPENERS:
             if re.search(pattern, content_lower):
-                violations.append(f"AI 오프너 패턴: {pattern}")
+                violations.append(f"AI opener pattern: {pattern}")
                 break
 
         # 3. 칭찬→경험→질문 공식 탐지
@@ -217,16 +218,16 @@ class Safety:
         has_experience = any(w in content_lower for w in ("in my experience", "i've found", "i tried"))
         has_question = content.rstrip().endswith("?")
         if has_praise and has_experience and has_question:
-            violations.append("공식적 구조: 칭찬→경험→질문")
+            violations.append("Formulaic structure: praise→experience→question")
 
         # 4. 길이 검증
         max_lengths = {"twitter": 280, "bluesky": 300}
         if platform in max_lengths and len(content) > max_lengths[platform]:
-            violations.append(f"{platform} 길이 초과 ({len(content)}/{max_lengths[platform]})")
+            violations.append(f"{platform} length exceeded ({len(content)}/{max_lengths[platform]})")
 
         # 5. 자기 홍보 비율 (URL 개수)
         url_count = len(re.findall(r"https?://", content))
         if url_count > 1:
-            violations.append(f"URL {url_count}개 — 자기 홍보 의심")
+            violations.append(f"{url_count} URLs detected — possible self-promotion")
 
         return len(violations) == 0, violations

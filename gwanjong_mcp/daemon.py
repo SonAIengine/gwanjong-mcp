@@ -15,8 +15,10 @@ from .llm import CommentGenerator
 from .memory import Memory
 from .safety import Safety
 
-# ~/.gwanjong/.env 로드
-_env_path = Path.home() / ".gwanjong" / ".env"
+import os
+
+# Load .env (configurable via GWANJONG_ENV_PATH)
+_env_path = Path(os.getenv("GWANJONG_ENV_PATH", str(Path.home() / ".gwanjong" / ".env")))
 if _env_path.exists():
     load_dotenv(_env_path)
 
@@ -25,58 +27,58 @@ def main() -> None:
     """CLI 진입점."""
     parser = argparse.ArgumentParser(
         prog="gwanjong-daemon",
-        description="gwanjong 자율 소셜 에이전트 데몬",
+        description="gwanjong autonomous social agent daemon",
     )
     parser.add_argument(
         "--topics", "-t",
         type=str,
         default="MCP",
-        help="쉼표로 구분된 토픽 목록 (기본: MCP)",
+        help="comma-separated topics (default: MCP)",
     )
     parser.add_argument(
         "--interval", "-i",
         type=float,
         default=4.0,
-        help="사이클 간격 (시간, 기본: 4.0)",
+        help="cycle interval in hours (default: 4.0)",
     )
     parser.add_argument(
         "--max-actions",
         type=int,
         default=3,
-        help="사이클당 최대 액션 수 (기본: 3)",
+        help="max actions per cycle (default: 3)",
     )
     parser.add_argument(
         "--max-cycles",
         type=int,
         default=None,
-        help="최대 사이클 수 (기본: 무한)",
+        help="max cycles (default: unlimited)",
     )
     parser.add_argument(
         "--platforms",
         type=str,
         default=None,
-        help="쉼표로 구분된 플랫폼 (기본: 전체)",
+        help="comma-separated platforms (default: all configured)",
     )
     parser.add_argument(
         "--require-approval",
         action="store_true",
-        help="strike 전 승인 필요",
+        help="require approval before strike",
     )
     parser.add_argument(
         "--model",
         type=str,
         default="claude-haiku-4-5-20251001",
-        help="LLM 모델 (기본: claude-haiku-4-5-20251001)",
+        help="LLM model (default: claude-haiku-4-5-20251001)",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="scout + draft만 실행, strike 안 함",
+        help="scout + draft only, skip strike",
     )
     parser.add_argument(
         "-v", "--verbose",
         action="store_true",
-        help="디버그 로그 출력",
+        help="enable debug logging",
     )
 
     args = parser.parse_args()

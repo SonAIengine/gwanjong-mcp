@@ -47,7 +47,7 @@ class CommentGenerator:
         if os.getenv("ANTHROPIC_API_KEY"):
             return "sdk"
         raise RuntimeError(
-            "LLM 백엔드 없음. claude CLI를 설치하거나 ANTHROPIC_API_KEY를 설정하세요."
+            "No LLM backend available. Install claude CLI or set ANTHROPIC_API_KEY."
         )
 
     async def generate(
@@ -90,7 +90,7 @@ class CommentGenerator:
 
         if proc.returncode != 0:
             err = stderr.decode().strip()
-            raise RuntimeError(f"claude CLI 에러 (code {proc.returncode}): {err}")
+            raise RuntimeError(f"claude CLI error (code {proc.returncode}): {err}")
 
         content = stdout.decode().strip()
         logger.info(
