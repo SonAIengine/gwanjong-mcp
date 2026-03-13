@@ -1,0 +1,22 @@
+services:
+  daemon:
+    build: .
+    command: gwanjong-daemon --topics "MCP,LLM" --require-approval --interval 4
+    env_file: .env
+    volumes:
+      - gwanjong-data:/root/.gwanjong
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    ports:
+      - "8585:8585"
+    env_file: .env
+    volumes:
+      - gwanjong-data:/root/.gwanjong
+    restart: unless-stopped
+
+volumes:
+  gwanjong-data:

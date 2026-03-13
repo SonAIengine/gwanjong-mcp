@@ -1,44 +1,43 @@
-# 관종 에이전트 활용 가이드
+# gwanjong Agent Guide
 
-## 한 줄 요약
+## TL;DR
 
-**"홍보하지 마라. 도와주다 보면 알려진다."**
+**"Don't promote. Help people, and they'll find you."**
 
-관종 에이전트는 스팸봇이 아니다. 개발자 커뮤니티에서 진짜 가치를 제공하면서,
-자연스럽게 내 프로젝트와 프로필이 노출되도록 하는 도구다.
+gwanjong is not a spam bot. It's a tool for providing genuine value in developer communities while naturally increasing your project and profile visibility.
 
 ---
 
-## 시작하기
+## Getting Started
 
-### 1. 플랫폼 설정
+### 1. Platform Setup
 
-Claude Code에서:
+In Claude Code:
 ```
 > gwanjong_setup action="check"
 ```
-설정 안 된 플랫폼이 있으면:
+If a platform isn't configured:
 ```
 > gwanjong_setup action="guide" platform="devto"
 ```
-안내에 따라 API 키 발급 후:
+Follow the guide to get an API key, then:
 ```
 > gwanjong_setup action="save" platform="devto" credentials={"DEVTO_API_KEY": "..."}
 ```
 
-### 2. 기본 워크플로우
+### 2. Basic Workflow
 
 ```
-나: "MCP 관련 글에서 활동해줘"
+You: "Engage with MCP-related posts"
 
-에이전트:
-1. scout("MCP server", platforms=["devto", "twitter"]) → 기회 발견
-2. draft("opp_0") → 맥락 분석
-3. 댓글 초안 작성 → 사용자 승인 요청
-4. strike("opp_0", action="comment", content="...") → 게시
+Agent:
+1. scout("MCP server", platforms=["devto", "twitter"]) → find opportunities
+2. draft("opp_0") → analyze context
+3. Draft a comment → ask for your approval
+4. strike("opp_0", action="comment", content="...") → post it
 ```
 
-자율 모드에서는 승인 대기열을 사용할 수 있다:
+In autonomous mode, you can use the approval queue:
 
 ```bash
 gwanjong-daemon --require-approval --max-cycles 1
@@ -48,105 +47,105 @@ gwanjong-approval approve 1
 gwanjong-approval reject 2
 ```
 
-대시보드(`gwanjong-dashboard`)를 띄우면 pending approval을 보고 바로 approve/reject 할 수 있다.
+Run the dashboard (`gwanjong-dashboard`) to review and approve/reject pending items from a web UI.
 
 ---
 
-## 활동 전략
+## Engagement Strategies
 
-### 전략 1: 질문에 답변하기 (가장 효과적)
+### Strategy 1: Answering Questions (Most Effective)
 
-누군가 "MCP 서버 추천해주세요", "대학교 포털 자동화 어떻게 하나요" 같은 질문을 올리면
-**진심으로 답변하면서** 내 프로젝트를 자연스럽게 언급한다.
+When someone asks "recommend an MCP server" or "how do I automate a university portal", **answer genuinely** and mention your project naturally.
 
 ```
-scout 키워드 예시:
+Scout keywords:
 - "MCP server recommendation"
 - "university portal automation"
 - "developer productivity tools"
 - "social media API integration"
 ```
 
-좋은 댓글:
-> "저도 비슷한 니즈가 있어서 직접 MCP 서버를 만들었습니다.
-> 대학 포털을 MCP 서버로 감싸서 Claude Code에서 수강신청, 성적 조회 등을
-> 자연어로 할 수 있게 했어요. 혹시 관심 있으시면 GitHub에 올려뒀습니다: (링크)"
+Good comment:
+> "I had a similar need, so I built an MCP server for it.
+> I wrapped a university portal in an MCP server so Claude Code can handle
+> enrollment, grades, etc. via natural language.
+> If you're interested, it's on GitHub: (link)"
 
-나쁜 댓글:
-> "제 프로젝트 ku-portal-mcp를 사용해보세요! 최고입니다! ⭐ 부탁드립니다!"
+Bad comment:
+> "Check out my project ku-portal-mcp! It's the best! Please star it! ⭐"
 
-### 전략 2: 기술 인사이트 공유
+### Strategy 2: Sharing Technical Insights
 
-트렌딩 게시글에 **내 경험에서 우러나온 기술적 의견**을 남긴다.
-링크는 넣지 않아도 된다 — 프로필에 GitHub이 있으니 관심 있는 사람은 찾아온다.
+Leave **experience-driven technical opinions** on trending posts.
+No link needed — your GitHub is on your profile. Interested people will find it.
 
 ```
-scout 키워드 예시:
+Scout keywords:
 - "LLM tool calling"
 - "async Python"
 - "MCP protocol"
 - "developer community"
 ```
 
-좋은 댓글:
-> "MCP 서버 개발하면서 느낀 건데, tool 개수를 최소화하는 게 정말 중요합니다.
-> tool description이 매 호출마다 시스템 프롬프트에 포함되거든요.
-> 저는 14개 → 5개로 줄이고 stores/requires 패턴으로 상태 체이닝했더니
-> 라운드트립이 9번 → 3번으로 줄었습니다."
+Good comment:
+> "From building MCP servers, I learned that minimizing the number of tools is critical.
+> Tool descriptions are included in every system prompt.
+> I went from 14 tools → 5 using a stores/requires state chaining pattern,
+> which cut round trips from 9 → 3."
 
-### 전략 3: 블로그 글 교차 게시
+### Strategy 3: Cross-Posting Blog Articles
 
-sonblog에 쓴 기술 글을 Dev.to에 교차 게시한다.
-canonical_url을 설정해서 SEO 중복을 피한다.
+Cross-post technical blog articles to Dev.to.
+Set `canonical_url` to avoid SEO duplication.
 
 ```
-strike action="post" 사용
-- Dev.to: 긴 기술 글 (마크다운 지원)
-- Twitter: 핵심 한 줄 + 블로그 링크
-- Bluesky: 요약 + 블로그 링크
+Use strike action="post":
+- Dev.to: long-form technical articles (markdown)
+- Twitter: one-liner + blog link
+- Bluesky: summary + blog link
 ```
 
-### 전략 4: 주간 루틴
+### Strategy 4: Weekly Routine
 
-| 요일 | 활동 | 플랫폼 |
-|------|------|--------|
-| 월 | 트렌딩 체크 + 답변 2-3개 | Dev.to |
-| 수 | 기술 스레드 참여 | Twitter, Bluesky |
-| 금 | 블로그 글 교차 게시 | Dev.to → Twitter → Bluesky |
+| Day | Activity | Platform |
+|-----|----------|----------|
+| Mon | Check trending + reply to 2-3 posts | Dev.to |
+| Wed | Join technical threads | Twitter, Bluesky |
+| Fri | Cross-post blog article | Dev.to → Twitter → Bluesky |
 
 ---
 
-## 플랫폼별 톤 & 규칙
+## Platform Tone & Rules
 
 ### Dev.to
-- **톤**: 친근하지만 기술적. 코드 블록 적극 활용.
-- **길이**: 댓글 3-5문장. 글은 제한 없음.
-- **팁**: 태그(#python, #mcp, #ai)를 잘 걸면 검색 노출 극대화.
-- **금지**: 제목 낚시, 내용 없는 홍보 글.
+- **Tone**: Friendly but technical. Use code blocks often.
+- **Length**: Comments 3-5 sentences. Articles unlimited.
+- **Tip**: Good tags (#python, #mcp, #ai) maximize search visibility.
+- **Don't**: Clickbait titles, empty promotional posts.
 
 ### Twitter/X
-- **톤**: 간결하고 임팩트 있게. 280자.
-- **길이**: 1-2문장 + 링크 또는 스레드.
-- **팁**: 해시태그 2-3개. 인용 RT로 의견 추가.
-- **금지**: 같은 링크 반복 트윗, 무차별 멘션.
+- **Tone**: Concise and impactful. 280 chars.
+- **Length**: 1-2 sentences + link, or threads.
+- **Tip**: 2-3 hashtags. Quote RT to add your take.
+- **Don't**: Repeat the same link, mass-mention people.
 
 ### Bluesky
-- **톤**: Twitter보다 캐주얼. 개발자 커뮤니티 분위기.
-- **길이**: 300자 제한. 핵심만.
-- **팁**: 초기 플랫폼이라 팔로워 확보 기회 큼.
-- **금지**: 공격적 홍보. 커뮤니티가 작아서 빠르게 눈에 띈다.
+- **Tone**: More casual than Twitter. Dev community vibe.
+- **Length**: 300 char limit. Keep it focused.
+- **Tip**: Early-stage platform = good opportunity to build a following.
+- **Don't**: Aggressive promotion. Small community = you'll get noticed fast.
 
 ### Reddit
-- **톤**: 서브레딧마다 다름. 룰 먼저 확인.
-- **길이**: 충분히 상세하게. 저퀄 댓글은 다운보트.
-- **팁**: r/MCP, r/ClaudeAI, r/Python, r/MachineLearning 등.
-- **금지**: 셀프 홍보 비율 10% 이하 권장 (Reddit 공식 정책). 링크만 던지기 금지.
+- **Tone**: Varies by subreddit. Read the rules first.
+- **Length**: Be thorough. Low-effort comments get downvoted.
+- **Tip**: r/MCP, r/ClaudeAI, r/Python, r/MachineLearning, etc.
+- **Don't**: Self-promo should be <10% of activity (Reddit official policy). No link-only posts.
 
 ---
 
-## 홍보할 프로젝트
+## Projects to Promote
 
-`~/.gwanjong/profile.json`에서 로드. 프로젝트 목록, 개인 브랜드 정보, 타겟 키워드 등을 관리.
+Loaded from `~/.gwanjong/profile.json`. Manages project list, personal brand info, and target keywords.
 
 ```json
 {
@@ -161,21 +160,21 @@ strike action="post" 사용
 
 ---
 
-## 성과 측정
+## Measuring Results
 
-에이전트가 활동한 결과를 추적:
+Track the outcomes of agent activity:
 
-- **팔로워 증가**: GitHub stars, Dev.to followers, Twitter followers
-- **트래픽**: 블로그 방문자 (Cloudflare Analytics)
-- **참여**: 댓글 반응 (좋아요, 답글)
-- **전환**: GitHub repo clone/fork 수
+- **Follower growth**: GitHub stars, Dev.to followers, Twitter followers
+- **Traffic**: Blog visitors (Cloudflare Analytics)
+- **Engagement**: Comment reactions (likes, replies)
+- **Conversion**: GitHub repo clones/forks
 
 ---
 
-## 주의사항
+## Safety Rules
 
-1. **하루 활동량 제한** — 플랫폼당 댓글 3개, 글 1개 이하. 그 이상은 스팸.
-2. **동일 내용 복붙 금지** — 같은 댓글을 여러 글에 붙이면 바로 신고당함.
-3. **부정적 토론 회피** — 불꽃 논쟁에 끼어들지 않음. draft의 tone이 negative면 스킵.
-4. **가짜 계정 금지** — 하나의 진짜 계정으로만 활동.
-5. **strike 전 반드시 승인** — 자율 모드에서는 approval queue 또는 dashboard에서 확인 후 게시.
+1. **Daily activity limits** — Max 3 comments, 1 post per platform per day. More than that is spam.
+2. **No copy-paste** — Posting the same comment on multiple posts will get you reported.
+3. **Avoid negative threads** — Don't enter flame wars. If draft's tone is negative, skip it.
+4. **No fake accounts** — Only use one real account per platform.
+5. **Approve before posting** — In autonomous mode, always review via approval queue or dashboard before publishing.
