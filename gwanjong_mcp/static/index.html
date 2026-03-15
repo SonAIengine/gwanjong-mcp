@@ -537,7 +537,12 @@ async function refreshAgents() {
           ${platforms.map(p=>`<span class="camp-tag"><span class="pi ${p}"></span>${p}</span>`).join('')}
           ${topics.map(t=>`<span class="camp-tag">${esc(t)}</span>`).join('')}
         </div>
-        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">${TONE_KO[a.tone]||a.tone}${a.require_approval ? '' : ' · <span style="color:var(--green)">자율 모드</span>'}${a.dry_run ? ' · <span style="color:var(--yellow)">테스트</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">${TONE_KO[a.tone]||a.tone}${a.require_approval ? '' : ' · <span style="color:var(--green)">자율</span>'}${a.dry_run ? ' · <span style="color:var(--yellow)">테스트</span>' : ''}</div>
+        ${a.stats ? `<div style="display:flex;justify-content:center;gap:16px;margin-bottom:10px">
+          <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:var(--green)">${a.stats.today}</div><div style="font-size:10px;color:var(--text2)">오늘</div></div>
+          <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:var(--accent)">${a.stats.week}</div><div style="font-size:10px;color:var(--text2)">주간</div></div>
+          <div style="text-align:center"><div style="font-size:18px;font-weight:700;color:var(--text2)">${a.stats.total}</div><div style="font-size:10px;color:var(--text2)">누적</div></div>
+        </div>` : ''}
         <div class="btn-group" style="justify-content:center">
           ${isRunning
             ? `<button class="btn danger" onclick="event.stopPropagation();agentStop('${a.id}')" style="font-size:11px;padding:4px 12px">정지</button>`

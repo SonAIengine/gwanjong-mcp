@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -98,9 +99,10 @@ class Memory:
             content = event.data.get("content", "")
             campaign_id = event.data.get("campaign_id", "")
             utm_url = event.data.get("utm_url", "")
+            agent_id = os.getenv("GWANJONG_AGENT_ID", "") or None
 
             conn.execute(
-                "INSERT INTO actions (opportunity_id, post_id, platform, post_url, action, content, timestamp, campaign_id, utm_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO actions (opportunity_id, post_id, platform, post_url, action, content, timestamp, campaign_id, utm_url, agent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     opp_id,
                     post_id,
@@ -111,6 +113,7 @@ class Memory:
                     timestamp,
                     campaign_id or None,
                     utm_url or None,
+                    agent_id,
                 ),
             )
             # seen_posts에 활동 표시

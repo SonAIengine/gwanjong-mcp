@@ -140,6 +140,7 @@ def ensure_campaigns_table(conn: sqlite3.Connection) -> None:
     """)
     _ensure_column(conn, "actions", "campaign_id", "TEXT")
     _ensure_column(conn, "actions", "utm_url", "TEXT")
+    _ensure_column(conn, "actions", "agent_id", "TEXT")
     conn.commit()
 
 

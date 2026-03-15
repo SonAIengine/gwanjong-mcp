@@ -562,6 +562,10 @@ async def handle_api_campaign_update(request: web.Request) -> web.Response:
 async def handle_api_agents_list(request: web.Request) -> web.Response:
     conn = _get_db()
     try:
+        now = datetime.now(timezone.utc)
+        today = now.strftime("%Y-%m-%d")
+        week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+
         rows = conn.execute("SELECT * FROM agents ORDER BY created_at DESC").fetchall()
         agents = []
         for r in rows:
@@ -570,6 +574,25 @@ async def handle_api_agents_list(request: web.Request) -> web.Response:
             proc = _agent_daemons.get(agent_id)
             agent["running"] = proc is not None and proc.returncode is None
             agent["pid"] = proc.pid if agent["running"] else None
+
+            # 에이전트별 실적
+            agent["stats"] = {
+                "today": conn.execute(
+                    "SELECT COUNT(*) FROM actions WHERE agent_id = ? AND timestamp >= ?",
+                    (agent_id, today),
+                ).fetchone()[0],
+                "week": conn.execute(
+                    "SELECT COUNT(*) FROM actions WHERE agent_id = ? AND timestamp >= ?",
+                    (agent_id, week_ago),
+                ).fetchone()[0],
+                "total": conn.execute(
+                    "SELECT COUNT(*) FROM actions WHERE agent_id = ?", (agent_id,)
+                ).fetchone()[0],
+                "pending": conn.execute(
+                    "SELECT COUNT(*) FROM approval_queue WHERE status = 'pending'"
+                ).fetchone()[0],
+            }
+
             agents.append(agent)
         return web.json_response({"agents": agents, "count": len(agents)})
     finally:
@@ -715,6 +738,7 @@ async def handle_api_agent_start(request: web.Request) -> web.Response:
     _agent_logs[agent_id] = [f"[sys] {agent['name']} 시작: {' '.join(cmd)}"]
 
     agent_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    agent_env["GWANJONG_AGENT_ID"] = agent_id
     if agent.get("personality"):
         agent_env["GWANJONG_AGENT_PERSONALITY"] = agent["personality"]
     if agent.get("name"):
