@@ -528,7 +528,7 @@ async def strike(
     if not result.success:
         response["error"] = result.error
 
-    if bus:
+    if bus and result.success:
         after_data2: dict[str, Any] = {
             "record": record,
             "response": response,
