@@ -90,6 +90,12 @@ class Memory:
             platform = (
                 record.platform if hasattr(record, "platform") else record.get("platform", "")
             )
+
+            # URL이 비어있으면 post_id로 자동 생성
+            if not url:
+                pid = record.post_id if hasattr(record, "post_id") else record.get("post_id", "")
+                if pid and platform == "twitter":
+                    url = f"https://x.com/i/status/{pid}"
             action = record.action if hasattr(record, "action") else record.get("action", "")
             opp_id = (
                 record.opportunity_id
