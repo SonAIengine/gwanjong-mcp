@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.4.1] — 2026-03-16
+
+### 운영 콘솔 + 에이전트 캐릭터 시스템 + 실전 운영 안정화
+
+v0.4.0 출시 후 실제 운영하면서 발견된 20+ 이슈 수정. 대시보드를 마케팅 운영 콘솔로 고도화.
+
+#### 운영 콘솔 (대시보드 고도화)
+- **탭 구조**: 현황판 / 에이전트 / 캠페인 3탭
+- **전체 한국어화**: 탭, 카드, 모달, 상태 메시지, 시간 표현 ("5분 전", "방금")
+- **Daemon 제어**: subprocess로 에이전트 시작/중지, 실시간 로그
+- **Campaign UI**: 캠페인 생성 모달 + KPI 리포트 (진행률 바, 플랫폼/액션 차트)
+- **승인 큐 개선**: 원본 글 링크 + 댓글 내용 미리보기 + 전체 승인/거부 버튼
+- **실패 항목**: 기본 숨김 (접이식 "재시도 대기 N건"), 자동 재시도 안내
+
+#### 에이전트 캐릭터 시스템
+- **팀원 관리**: 이름, 성격, 담당 토픽/플랫폼, 말투 설정
+- **DiceBear 아바타**: 6종 스타일 (로봇, 이모지, 픽셀, 모험가 등) + 실시간 미리보기
+- **카드 UI**: 아바타 + 상태 인디케이터(실행/대기) + 실적(오늘/주간/누적) + 출근/수정/해고
+- **personality → LLM 반영**: 환경변수로 daemon에 전달 → 시스템 프롬프트에 CHARACTER 섹션
+- **승인/자율 모드**: 팀원별 독립 설정, 플랫폼 체크박스 선택
+- **에이전트별 독립 subprocess**: 각자 다른 토픽/플랫폼으로 병렬 실행
+- `agents` SQLite 테이블 + CRUD API (GET/POST/PATCH/DELETE + start/stop/logs)
+
+#### 중복 방지 (3중 차단)
+- **URL 정규화**: `#comments` fragment 제거하여 일관된 비교
+- **seen_posts acted 매칭**: strike 성공 + 승인 큐 등록 시 acted=1 기록
+- **author 분산**: 같은 저자 최대 1건 + 이전 활동 저자 제외 (같은 사람 6번 댓글 방지)
+
+#### 안전장치 강화
+- **자율 모드 post 차단**: comment만 허용 (내 계정에 남의 서비스 홍보 트윗 사고 방지)
+- **연속 실패 자동 차단**: 3회 연속 실패 → 해당 플랫폼 24시간 자동 차단 + 자동 해제
+- **strike.failed 이벤트**: 실패 추적용 신규 EventBus 이벤트
+- **strike 실패 시 actions 미기록**: result.success=False면 strike.after 이벤트 미발행
+
+#### Twitter 대응
+- **twikit→tweepy fallback**: 읽기 메서드 5개에 try/except 자동 전환 (devhub-social)
+- **독립 트윗 방지**: write_comment 후 in_reply_to_user_id 검증, 독립이면 삭제 + 실패 반환
+- **URL 자동 생성**: write_comment 응답에 URL 없으면 post_id로 fallback
+- **twikit 크레덴셜 비활성화**: 서버 Cloudflare 차단 회피, tweepy Bearer Token 전용
+
+#### 기타 개선
+- **자동 대댓글**: 답글 감지 시 원본 댓글 + 상대방 답글을 맥락으로 LLM 대댓글 생성
+- **쿨다운 완화**: 30분→5분, 일일 한도 상향 (devto 3→5, bluesky/twitter 5→8)
+- **승인 실패 자동 재시도**: 매 사이클마다 failed 항목 자동 retry
+- **미니어처 게임 스팸 필터**: Marvel Crisis Protocol(MCP 동명이의) 키워드 추가
+- **서버 재시작 시 에이전트 상태 복구**: on_startup에서 running→idle 리셋
+- **Blocked 에러 처리**: 500 대신 JSON 응답 + failed→reject 허용
+
+#### 배포 구조 변경
+- Docker → **systemd user service** (`gwanjong-dashboard.service`)
+- 이유: Docker 컨테이너에 claude CLI 없어서 LLM 생성 불가
+- `.env` + `memory.db` 로컬 직접 접근
+- `systemctl --user enable gwanjong-dashboard` (부팅 시 자동 시작)
+
+#### 플랫폼 설정
+- GitHub Discussions: 토큰 + 6개 repo 설정 완료 (MCP spec, langchain, autogen 등)
+- 한국어 README 추가 (README.ko.md)
+
+---
+
 ## [0.4.0] — 2026-03-15
 
 ### AI Growth OS 확장 — 채널 자동화에서 캠페인 기반 GTM 운영 시스템으로

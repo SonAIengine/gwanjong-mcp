@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "gwanjong-mcp"
-version = "0.4.0"
+version = "0.4.1"
 description = "AI Growth OS — campaign-driven social engagement with UTM tracking, scheduling, and A/B experiments"
 readme = "README.md"
 license = "MIT"
