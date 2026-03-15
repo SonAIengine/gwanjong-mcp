@@ -25,6 +25,7 @@ from .storage import (
 )
 from .storage import (
     ensure_actions_tables,
+    ensure_agents_table,
     ensure_approval_queue_table,
     ensure_campaigns_table,
     ensure_conversions_table,
@@ -157,7 +158,26 @@ def _get_db() -> sqlite3.Connection:
     ensure_campaigns_table(conn)
     ensure_conversions_table(conn)
     ensure_schedule_table(conn)
+    ensure_agents_table(conn)
     return conn
+
+
+# ── Agent (character) management ──
+
+_agent_daemons: dict[str, asyncio.subprocess.Process] = {}
+_agent_logs: dict[str, list[str]] = {}
+
+
+async def _read_agent_output(agent_id: str, stream: asyncio.StreamReader, label: str) -> None:
+    logs = _agent_logs.setdefault(agent_id, [])
+    while True:
+        line = await stream.readline()
+        if not line:
+            break
+        text = line.decode("utf-8", errors="replace").rstrip()
+        logs.append(f"[{label}] {text}")
+        if len(logs) > _DAEMON_LOG_MAX:
+            _agent_logs[agent_id] = logs[-_DAEMON_LOG_MAX:]
 
 
 def get_summary() -> dict:
@@ -277,7 +297,7 @@ def get_summary() -> dict:
             dict(r)
             for r in conn.execute(
                 """
-                SELECT id, topic, platform, action, status, title, post_url, created_at
+                SELECT id, topic, platform, action, status, title, post_url, content, created_at
                 FROM approval_queue
                 WHERE status='pending'
                 ORDER BY id DESC
@@ -290,7 +310,7 @@ def get_summary() -> dict:
             dict(r)
             for r in conn.execute(
                 """
-                SELECT id, topic, platform, action, status, title, post_url, created_at, last_error
+                SELECT id, topic, platform, action, status, title, post_url, content, created_at, last_error
                 FROM approval_queue
                 WHERE status='failed'
                 ORDER BY id DESC
@@ -532,6 +552,211 @@ async def handle_api_campaign_update(request: web.Request) -> web.Response:
     return web.json_response({"id": camp.id, "name": camp.name, "status": camp.status})
 
 
+# ── Agents API handlers ──
+
+
+async def handle_api_agents_list(request: web.Request) -> web.Response:
+    conn = _get_db()
+    try:
+        rows = conn.execute("SELECT * FROM agents ORDER BY created_at DESC").fetchall()
+        agents = []
+        for r in rows:
+            agent = dict(r)
+            agent_id = agent["id"]
+            proc = _agent_daemons.get(agent_id)
+            agent["running"] = proc is not None and proc.returncode is None
+            agent["pid"] = proc.pid if agent["running"] else None
+            agents.append(agent)
+        return web.json_response({"agents": agents, "count": len(agents)})
+    finally:
+        conn.close()
+
+
+async def handle_api_agent_create(request: web.Request) -> web.Response:
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+    if "name" not in data:
+        return web.json_response({"error": "name 필수"}, status=400)
+
+    import uuid
+
+    agent_id = f"agent_{uuid.uuid4().hex[:8]}"
+    now = datetime.now(timezone.utc).isoformat()
+
+    conn = _get_db()
+    try:
+        conn.execute(
+            """INSERT INTO agents (id, name, avatar_style, avatar_seed, personality,
+                topics_json, platforms_json, tone, max_length, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?)""",
+            (
+                agent_id,
+                data["name"],
+                data.get("avatar_style", "bottts"),
+                data.get("avatar_seed", data["name"]),
+                data.get("personality", ""),
+                json.dumps(data.get("topics", ["MCP"])),
+                json.dumps(data.get("platforms", ["devto"])),
+                data.get("tone", "casual-professional"),
+                data.get("max_length", 500),
+                now,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return web.json_response({"id": agent_id, "name": data["name"]})
+
+
+async def handle_api_agent_update(request: web.Request) -> web.Response:
+    agent_id = request.match_info["agent_id"]
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
+        if not row:
+            return web.json_response({"error": "에이전트 없음"}, status=404)
+
+        updates, params = [], []
+        field_map = {
+            "name": "name",
+            "avatar_style": "avatar_style",
+            "avatar_seed": "avatar_seed",
+            "personality": "personality",
+            "tone": "tone",
+            "max_length": "max_length",
+        }
+        json_fields = {"topics": "topics_json", "platforms": "platforms_json"}
+
+        for k, col in field_map.items():
+            if k in data:
+                updates.append(f"{col} = ?")
+                params.append(data[k])
+        for k, col in json_fields.items():
+            if k in data:
+                updates.append(f"{col} = ?")
+                params.append(json.dumps(data[k]))
+
+        if updates:
+            params.append(agent_id)
+            conn.execute(f"UPDATE agents SET {', '.join(updates)} WHERE id = ?", params)
+            conn.commit()
+
+        return web.json_response({"id": agent_id, "updated": True})
+    finally:
+        conn.close()
+
+
+async def handle_api_agent_delete(request: web.Request) -> web.Response:
+    agent_id = request.match_info["agent_id"]
+    # 실행 중이면 먼저 중지
+    proc = _agent_daemons.get(agent_id)
+    if proc and proc.returncode is None:
+        proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            proc.kill()
+        _agent_daemons.pop(agent_id, None)
+
+    conn = _get_db()
+    try:
+        conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return web.json_response({"id": agent_id, "deleted": True})
+
+
+async def handle_api_agent_start(request: web.Request) -> web.Response:
+    agent_id = request.match_info["agent_id"]
+
+    proc = _agent_daemons.get(agent_id)
+    if proc and proc.returncode is None:
+        return web.json_response({"error": "이미 실행 중", "pid": proc.pid}, status=409)
+
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
+        if not row:
+            return web.json_response({"error": "에이전트 없음"}, status=404)
+        agent = dict(row)
+    finally:
+        conn.close()
+
+    topics = json.loads(agent["topics_json"])
+    platforms = json.loads(agent["platforms_json"])
+
+    cmd = [sys.executable, "-m", "gwanjong_mcp.daemon"]
+    cmd.extend(["--topics", ",".join(topics)])
+    if platforms:
+        cmd.extend(["--platforms", ",".join(platforms)])
+    cmd.extend(["--max-actions", "3"])
+    cmd.append("--require-approval")
+
+    _agent_logs[agent_id] = [f"[sys] {agent['name']} 시작: {' '.join(cmd)}"]
+
+    new_proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+    )
+    _agent_daemons[agent_id] = new_proc
+    asyncio.create_task(_read_agent_output(agent_id, new_proc.stdout, "out"))
+    asyncio.create_task(_read_agent_output(agent_id, new_proc.stderr, "err"))
+
+    conn = _get_db()
+    try:
+        conn.execute("UPDATE agents SET status = 'running' WHERE id = ?", (agent_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    _agent_logs[agent_id].append(f"[sys] PID {new_proc.pid}")
+    return web.json_response({"id": agent_id, "status": "started", "pid": new_proc.pid})
+
+
+async def handle_api_agent_stop(request: web.Request) -> web.Response:
+    agent_id = request.match_info["agent_id"]
+    proc = _agent_daemons.get(agent_id)
+    if not proc or proc.returncode is not None:
+        return web.json_response({"status": "not_running"})
+
+    proc.terminate()
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=10)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+
+    _agent_daemons.pop(agent_id, None)
+    logs = _agent_logs.get(agent_id, [])
+    logs.append("[sys] 정지됨")
+
+    conn = _get_db()
+    try:
+        conn.execute("UPDATE agents SET status = 'idle' WHERE id = ?", (agent_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return web.json_response({"id": agent_id, "status": "stopped"})
+
+
+async def handle_api_agent_logs(request: web.Request) -> web.Response:
+    agent_id = request.match_info["agent_id"]
+    logs = _agent_logs.get(agent_id, [])
+    return web.json_response({"logs": logs[-100:], "total": len(logs)})
+
+
 async def handle_index(request: web.Request) -> web.Response:
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
@@ -553,6 +778,14 @@ def create_app() -> web.Application:
     app.router.add_post("/api/campaigns", handle_api_campaign_create)
     app.router.add_get("/api/campaigns/{campaign_id}/report", handle_api_campaign_report)
     app.router.add_patch("/api/campaigns/{campaign_id}", handle_api_campaign_update)
+    # Agents (characters)
+    app.router.add_get("/api/agents", handle_api_agents_list)
+    app.router.add_post("/api/agents", handle_api_agent_create)
+    app.router.add_patch("/api/agents/{agent_id}", handle_api_agent_update)
+    app.router.add_delete("/api/agents/{agent_id}", handle_api_agent_delete)
+    app.router.add_post("/api/agents/{agent_id}/start", handle_api_agent_start)
+    app.router.add_post("/api/agents/{agent_id}/stop", handle_api_agent_stop)
+    app.router.add_get("/api/agents/{agent_id}/logs", handle_api_agent_logs)
     # Data
     app.router.add_get("/api/conversions", handle_api_conversions)
     app.router.add_get("/api/schedule", handle_api_schedule)

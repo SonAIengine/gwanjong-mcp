@@ -216,6 +216,26 @@ def ensure_schedule_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def ensure_agents_table(conn: sqlite3.Connection) -> None:
+    """Ensure agents (character profiles) table exists."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS agents (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            avatar_style TEXT NOT NULL DEFAULT 'bottts',
+            avatar_seed TEXT NOT NULL DEFAULT '',
+            personality TEXT NOT NULL DEFAULT '',
+            topics_json TEXT NOT NULL DEFAULT '[]',
+            platforms_json TEXT NOT NULL DEFAULT '[]',
+            tone TEXT NOT NULL DEFAULT 'casual-professional',
+            max_length INTEGER NOT NULL DEFAULT 500,
+            status TEXT NOT NULL DEFAULT 'idle',
+            created_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
+
 def ensure_experiments_table(conn: sqlite3.Connection) -> None:
     """Ensure A/B experiments table exists."""
     conn.execute("""

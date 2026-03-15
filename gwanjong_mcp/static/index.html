@@ -135,7 +135,19 @@
   .tl-content { font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tl-content a { color: var(--text2); }
 
-  /* ── Daemon tab ── */
+  /* ── Agent tab ── */
+  .agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .agent-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; transition: border-color 0.15s; position: relative; }
+  .agent-card:hover { border-color: var(--accent); }
+  .agent-card.running { border-color: var(--green); }
+  .agent-avatar { width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 12px; background: var(--border); overflow: hidden; }
+  .agent-avatar img { width: 100%; height: 100%; }
+  .agent-name { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .agent-personality { font-size: 12px; color: var(--text2); margin-bottom: 8px; line-height: 1.4; min-height: 34px; }
+  .agent-info { display: flex; justify-content: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .agent-status-dot { position: absolute; top: 16px; right: 16px; width: 10px; height: 10px; border-radius: 50%; }
+  .agent-status-dot.running { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .agent-status-dot.idle { background: var(--text2); }
   .daemon-status { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
   .daemon-dot { width: 12px; height: 12px; border-radius: 50%; }
   .daemon-dot.running { background: var(--green); box-shadow: 0 0 8px var(--green); }
@@ -220,27 +232,12 @@
 
 <!-- ══ 에이전트 탭 ══ -->
 <div class="tab-content" id="tab-daemon">
-  <div class="grid">
-    <div class="card">
-      <h3>에이전트 상태</h3>
-      <div class="daemon-status" id="daemon-status">
-        <div class="daemon-dot stopped"></div>
-        <span class="daemon-label">정지됨</span>
-      </div>
-      <div class="btn-group" id="daemon-btns">
-        <button class="btn success" id="btn-daemon-start" onclick="showDaemonConfig()">에이전트 시작</button>
-        <button class="btn danger" id="btn-daemon-stop" onclick="stopDaemon()" disabled>정지</button>
-      </div>
-    </div>
-    <div class="card">
-      <h3>실행 설정</h3>
-      <div id="daemon-config-display" style="font-size:13px; color: var(--text2);">실행 중이 아닙니다</div>
-    </div>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <h2 style="font-size:18px;">내 팀원들</h2>
+    <button class="btn primary" onclick="showCreateAgent()">+ 팀원 추가</button>
   </div>
-  <div class="card" style="margin-top:16px">
-    <h3>실행 로그 <button class="btn" onclick="refreshDaemonLogs()" style="float:right;padding:2px 8px;font-size:11px">새로고침</button></h3>
-    <div class="log-box" id="daemon-logs"><div class="empty">로그 없음</div></div>
-  </div>
+  <div class="agent-grid" id="agent-list"><div class="empty">로딩 중...</div></div>
+  <div id="agent-detail" style="margin-top:16px"></div>
 </div>
 
 <!-- ══ 캠페인 탭 ══ -->
@@ -257,24 +254,39 @@
 
 <!-- ══ 모달 ══ -->
 
-<!-- 에이전트 시작 모달 -->
-<div class="modal-overlay" id="modal-daemon">
+<!-- 팀원 추가 모달 -->
+<div class="modal-overlay" id="modal-agent">
   <div class="modal">
-    <h2>에이전트 시작</h2>
-    <div class="form-row"><span class="form-label">토픽</span><input class="form-input" id="d-topics" value="MCP,LLM" placeholder="쉼표로 구분"></div>
-    <div class="form-row"><span class="form-label">플랫폼</span><input class="form-input" id="d-platforms" placeholder="전체 (비워두면 전체)"></div>
-    <div class="form-row"><span class="form-label">주기 (시간)</span><input class="form-input" id="d-interval" type="number" value="4" step="0.5" min="0.5"></div>
-    <div class="form-row"><span class="form-label">최대 활동 수</span><input class="form-input" id="d-max-actions" type="number" value="3" min="1"></div>
-    <div class="form-row"><span class="form-label">최대 사이클</span><input class="form-input" id="d-max-cycles" type="number" placeholder="무제한"></div>
-    <div class="form-row"><span class="form-label">캠페인 연동</span><input class="form-input" id="d-campaign" placeholder="camp_xxx (선택)"></div>
-    <div class="form-row" style="gap:16px">
-      <label class="form-check"><input type="checkbox" id="d-approval"> 승인 필요</label>
-      <label class="form-check"><input type="checkbox" id="d-dry-run"> 테스트 모드</label>
-      <label class="form-check"><input type="checkbox" id="d-auto-plan"> 자동 플랜</label>
+    <h2>팀원 추가</h2>
+    <div style="text-align:center;margin-bottom:16px">
+      <div class="agent-avatar" style="margin:0 auto"><img id="a-preview" src="https://api.dicebear.com/9.x/bottts-neutral/svg?seed=new&backgroundColor=1a1a2e"></div>
+    </div>
+    <div class="form-row"><span class="form-label">이름</span><input class="form-input" id="a-name" placeholder="준혁" oninput="previewAvatar()"></div>
+    <div class="form-row"><span class="form-label">캐릭터 스타일</span>
+      <select class="form-input" id="a-style" onchange="previewAvatar()">
+        <option value="bottts-neutral">로봇</option>
+        <option value="fun-emoji">이모지</option>
+        <option value="pixel-art">픽셀</option>
+        <option value="adventurer">모험가</option>
+        <option value="thumbs">엄지</option>
+        <option value="icons">아이콘</option>
+      </select>
+    </div>
+    <div class="form-row"><span class="form-label">성격</span><input class="form-input" id="a-personality" placeholder="기술 깊이 있고 유머있는 시니어 개발자"></div>
+    <div class="form-row"><span class="form-label">담당 토픽</span><input class="form-input" id="a-topics" value="MCP,LLM" placeholder="쉼표 구분"></div>
+    <div class="form-row"><span class="form-label">담당 플랫폼</span><input class="form-input" id="a-platforms" value="devto" placeholder="devto, twitter"></div>
+    <div class="form-row"><span class="form-label">말투</span>
+      <select class="form-input" id="a-tone">
+        <option value="casual-professional">캐주얼 프로</option>
+        <option value="conversational">대화형</option>
+        <option value="punchy">펀치라인</option>
+        <option value="blunt-helpful">직설 도움형</option>
+        <option value="technical-collaborative">기술 협업형</option>
+      </select>
     </div>
     <div class="btn-group" style="margin-top:16px; justify-content:flex-end">
-      <button class="btn" onclick="closeModal('modal-daemon')">취소</button>
-      <button class="btn primary" onclick="startDaemon()">시작</button>
+      <button class="btn" onclick="closeModal('modal-agent')">취소</button>
+      <button class="btn primary" onclick="createAgent()">추가</button>
     </div>
   </div>
 </div>
@@ -314,7 +326,7 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-    if (tab.dataset.tab === 'daemon') refreshDaemonStatus();
+    if (tab.dataset.tab === 'daemon') refreshAgents();
     if (tab.dataset.tab === 'campaigns') refreshCampaigns();
   });
 });
@@ -401,13 +413,17 @@ function renderPendingApprovals(approvals, failed, stats) {
   el.innerHTML = approvals.slice(0,5).map(a => `<div class="approval-item">
     <div class="approval-header"><span style="font-size:13px;font-weight:600">${esc(a.title)}</span><span style="color:var(--yellow);font-size:11px">대기</span></div>
     <div class="approval-meta"><span class="pi ${a.platform}"></span>${a.platform} · ${ACTION_KO[a.action]||a.action} · ${timeAgo(a.created_at)}</div>
+    ${a.post_url ? `<a href="${a.post_url}" target="_blank" style="font-size:11px;display:block;margin-top:4px;color:var(--accent)">${trunc(a.post_url,60)} ↗</a>` : ''}
+    ${a.content ? `<div style="font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;margin-top:6px;line-height:1.5;white-space:pre-wrap">${esc(a.content)}</div>` : ''}
     <div class="btn-group" style="margin-top:8px">
       <button class="btn success" onclick="approvalAction(${a.id},'approve')" style="padding:3px 10px;font-size:11px">승인</button>
       <button class="btn danger" onclick="approvalAction(${a.id},'reject')" style="padding:3px 10px;font-size:11px">거부</button>
     </div></div>`).join('') +
     (failed||[]).slice(0,3).map(a => `<div class="approval-item">
     <div class="approval-header"><span style="font-size:13px;font-weight:600">${esc(a.title)}</span><span style="color:var(--red);font-size:11px">실패</span></div>
-    <div style="font-size:11px;color:var(--red);margin-top:4px">${esc(trunc(a.last_error||'',80))}</div>
+    ${a.post_url ? `<a href="${a.post_url}" target="_blank" style="font-size:11px;display:block;margin-top:4px;color:var(--accent)">${trunc(a.post_url,60)} ↗</a>` : ''}
+    ${a.content ? `<div style="font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;margin-top:6px;line-height:1.5;white-space:pre-wrap">${esc(a.content)}</div>` : ''}
+    <div style="font-size:11px;color:var(--red);margin-top:4px">${esc(trunc(a.last_error||'',120))}</div>
     <button class="btn" onclick="approvalAction(${a.id},'retry')" style="margin-top:6px;padding:3px 10px;font-size:11px">재시도</button></div>`).join('');
 }
 
@@ -424,80 +440,106 @@ async function approvalAction(id, action) {
   try { await fetch(`/api/approvals/${id}/${action}`, {method:'POST'}); fetchSummary(); } catch(e) { alert(e); }
 }
 
-// ── 에이전트 ──
-function showDaemonConfig() { showModal('modal-daemon'); }
+// ── 에이전트 (팀원) ──
+const TONE_KO = {'casual-professional':'캐주얼 프로','conversational':'대화형','punchy':'펀치라인','blunt-helpful':'직설 도움형','technical-collaborative':'기술 협업형'};
+let _selectedAgent = null;
 
-async function startDaemon() {
-  const config = {
-    topics: document.getElementById('d-topics').value,
-    platforms: document.getElementById('d-platforms').value || undefined,
-    interval: parseFloat(document.getElementById('d-interval').value) || 4,
-    max_actions: parseInt(document.getElementById('d-max-actions').value) || 3,
-    max_cycles: parseInt(document.getElementById('d-max-cycles').value) || undefined,
-    campaign: document.getElementById('d-campaign').value || undefined,
-    require_approval: document.getElementById('d-approval').checked,
-    dry_run: document.getElementById('d-dry-run').checked,
-    auto_plan: document.getElementById('d-auto-plan').checked,
+function avatarUrl(style, seed) {
+  return `https://api.dicebear.com/9.x/${style||'bottts-neutral'}/svg?seed=${encodeURIComponent(seed||'default')}&backgroundColor=1a1a2e`;
+}
+function previewAvatar() {
+  const name = document.getElementById('a-name').value || 'new';
+  const style = document.getElementById('a-style').value;
+  document.getElementById('a-preview').src = avatarUrl(style, name);
+}
+function showCreateAgent() { showModal('modal-agent'); previewAvatar(); }
+
+async function createAgent() {
+  const data = {
+    name: document.getElementById('a-name').value,
+    avatar_style: document.getElementById('a-style').value,
+    avatar_seed: document.getElementById('a-name').value,
+    personality: document.getElementById('a-personality').value,
+    topics: document.getElementById('a-topics').value.split(',').map(s=>s.trim()).filter(Boolean),
+    platforms: document.getElementById('a-platforms').value.split(',').map(s=>s.trim()).filter(Boolean),
+    tone: document.getElementById('a-tone').value,
   };
-  closeModal('modal-daemon');
+  closeModal('modal-agent');
   try {
-    const r = await fetch('/api/daemon/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(config)});
-    const data = await r.json();
-    if (data.error) alert(data.error);
-    refreshDaemonStatus();
+    await fetch('/api/agents', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+    refreshAgents();
   } catch(e) { alert(e); }
 }
 
-async function stopDaemon() {
-  if (!confirm('에이전트를 정지할까요?')) return;
-  await fetch('/api/daemon/stop', {method:'POST'});
-  refreshDaemonStatus();
-}
-
-async function refreshDaemonStatus() {
+async function refreshAgents() {
   try {
-    const r = await fetch('/api/daemon/status');
+    const r = await fetch('/api/agents');
     const d = await r.json();
-    const dot = document.querySelector('#daemon-status .daemon-dot');
-    const label = document.querySelector('#daemon-status .daemon-label');
-    const btnStart = document.getElementById('btn-daemon-start');
-    const btnStop = document.getElementById('btn-daemon-stop');
-    const configEl = document.getElementById('daemon-config-display');
-
-    if (d.running) {
-      dot.className = 'daemon-dot running';
-      label.innerHTML = `실행 중 <span class="daemon-pid">PID ${d.pid}</span>`;
-      btnStart.disabled = true; btnStop.disabled = false;
-      const c = d.config || {};
-      configEl.innerHTML = `
-        <div>토픽: <strong>${esc(c.topics||'')}</strong></div>
-        <div>플랫폼: ${esc(c.platforms||'전체')}</div>
-        <div>주기: ${c.interval||4}시간 · 최대 활동: ${c.max_actions||3}건</div>
-        ${c.campaign ? `<div>캠페인: <strong>${esc(c.campaign)}</strong></div>` : ''}
-        ${c.require_approval ? '<div style="color:var(--yellow)">승인 필요 모드</div>' : ''}
-        ${c.dry_run ? '<div style="color:var(--yellow)">테스트 모드 (실제 발행 안 함)</div>' : ''}`;
-    } else {
-      dot.className = 'daemon-dot stopped';
-      label.textContent = d.exit_code !== null && d.exit_code !== undefined ? `정지됨 (종료 코드 ${d.exit_code})` : '정지됨';
-      btnStart.disabled = false; btnStop.disabled = true;
-      configEl.textContent = '실행 중이 아닙니다';
-    }
-    refreshDaemonLogs();
-  } catch(e) { console.error(e); }
-}
-
-async function refreshDaemonLogs() {
-  try {
-    const r = await fetch('/api/daemon/logs?limit=200');
-    const d = await r.json();
-    const el = document.getElementById('daemon-logs');
-    if (!d.logs.length) { el.innerHTML = '<div class="empty">로그 없음</div>'; return; }
-    el.innerHTML = d.logs.map(line => {
-      const cls = line.includes('[err]') ? 'err' : line.includes('[sys]') ? 'sys' : '';
-      return `<div class="log-line${cls ? ' '+cls : ''}">${esc(line)}</div>`;
+    const el = document.getElementById('agent-list');
+    if (!d.agents.length) { el.innerHTML = '<div class="empty">아직 팀원이 없어요. 팀원을 추가해보세요!</div>'; return; }
+    el.innerHTML = d.agents.map(a => {
+      const topics = JSON.parse(a.topics_json || '[]');
+      const platforms = JSON.parse(a.platforms_json || '[]');
+      const isRunning = a.running;
+      return `<div class="agent-card${isRunning?' running':''}" onclick="selectAgent('${a.id}')">
+        <div class="agent-status-dot ${isRunning?'running':'idle'}"></div>
+        <div class="agent-avatar"><img src="${avatarUrl(a.avatar_style, a.avatar_seed)}"></div>
+        <div class="agent-name">${esc(a.name)}</div>
+        <div class="agent-personality">${esc(a.personality || '성격 미설정')}</div>
+        <div class="agent-info">
+          ${platforms.map(p=>`<span class="camp-tag"><span class="pi ${p}"></span>${p}</span>`).join('')}
+          ${topics.map(t=>`<span class="camp-tag">${esc(t)}</span>`).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">${TONE_KO[a.tone]||a.tone}</div>
+        <div class="btn-group" style="justify-content:center">
+          ${isRunning
+            ? `<button class="btn danger" onclick="event.stopPropagation();agentStop('${a.id}')" style="font-size:11px;padding:4px 12px">정지</button>`
+            : `<button class="btn success" onclick="event.stopPropagation();agentStart('${a.id}')" style="font-size:11px;padding:4px 12px">출근</button>`}
+          <button class="btn danger" onclick="event.stopPropagation();agentDelete('${a.id}','${esc(a.name)}')" style="font-size:11px;padding:4px 12px">해고</button>
+        </div>
+      </div>`;
     }).join('');
-    el.scrollTop = el.scrollHeight;
   } catch(e) { console.error(e); }
+}
+
+async function selectAgent(id) {
+  _selectedAgent = id;
+  try {
+    const r = await fetch(`/api/agents/${id}/logs`);
+    const d = await r.json();
+    const el = document.getElementById('agent-detail');
+    if (!d.logs.length) { el.innerHTML = '<div class="card"><h3>로그</h3><div class="empty">로그 없음</div></div>'; return; }
+    el.innerHTML = `<div class="card"><h3>로그 <button class="btn" onclick="selectAgent('${id}')" style="float:right;padding:2px 8px;font-size:11px">새로고침</button></h3>
+      <div class="log-box">${d.logs.map(line => {
+        const cls = line.includes('[err]') ? 'err' : line.includes('[sys]') ? 'sys' : '';
+        return `<div class="log-line${cls ? ' '+cls : ''}">${esc(line)}</div>`;
+      }).join('')}</div></div>`;
+  } catch(e) { console.error(e); }
+}
+
+async function agentStart(id) {
+  try {
+    const r = await fetch(`/api/agents/${id}/start`, {method:'POST'});
+    const d = await r.json();
+    if (d.error) alert(d.error);
+    refreshAgents();
+  } catch(e) { alert(e); }
+}
+
+async function agentStop(id) {
+  try {
+    await fetch(`/api/agents/${id}/stop`, {method:'POST'});
+    refreshAgents();
+  } catch(e) { alert(e); }
+}
+
+async function agentDelete(id, name) {
+  if (!confirm(`${name}을(를) 정말 해고할까요?`)) return;
+  try {
+    await fetch(`/api/agents/${id}`, {method:'DELETE'});
+    document.getElementById('agent-detail').innerHTML = '';
+    refreshAgents();
+  } catch(e) { alert(e); }
 }
 
 // ── 캠페인 ──
@@ -622,8 +664,8 @@ function trunc(s,n) { return s&&s.length>n?s.slice(0,n)+'…':(s||''); }
 fetchSummary();
 setInterval(fetchSummary, REFRESH);
 setInterval(() => {
-  if (document.querySelector('[data-tab="daemon"].active')) refreshDaemonStatus();
-}, 5000);
+  if (document.querySelector('[data-tab="daemon"].active')) refreshAgents();
+}, 10000);
 </script>
 </body>
 </html>
