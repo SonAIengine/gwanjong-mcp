@@ -269,11 +269,23 @@ class AutonomousLoop:
                 logger.info(
                     "Strike 성공: %s %s → %s",
                     opp.platform,
-                    ctx.suggested_approach,
+                    action,
                     response.get("url", ""),
                 )
             else:
-                result.errors.append(f"strike 실패 ({opp.id}): {response.get('error', 'unknown')}")
+                error_msg = response.get("error", "unknown")
+                result.errors.append(f"strike 실패 ({opp.id}): {error_msg}")
+                # 실패 이벤트 → Safety가 연속 실패 추적
+                await self.bus.emit(
+                    Event(
+                        "strike.failed",
+                        {
+                            "platform": opp.platform,
+                            "action": action,
+                            "error": error_msg,
+                        },
+                    )
+                )
         except Blocked as e:
             result.actions_blocked += 1
             logger.info("Strike 차단: %s", e)

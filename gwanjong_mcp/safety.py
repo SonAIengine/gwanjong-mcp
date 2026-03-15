@@ -45,6 +45,11 @@ def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
 class Safety:
     """Rate limiting + content validation. Attach to EventBus to automatically gate strike.before."""
 
+    # 연속 실패 임계값 — 이 횟수 이상 연속 실패하면 플랫폼 자동 차단
+    CONSECUTIVE_FAIL_THRESHOLD = 3
+    # 차단 지속 시간 (분) — 자동 차단 후 이 시간 동안 해당 플랫폼 차단
+    PLATFORM_BAN_MINUTES = 60 * 24  # 24시간
+
     def __init__(
         self,
         limits: dict[str, PlatformLimit] | None = None,
@@ -52,18 +57,45 @@ class Safety:
     ) -> None:
         self.limits = limits or dict(DEFAULT_LIMITS)
         self._db_path = db_path
+        # 플랫폼별 연속 실패 카운터
+        self._consecutive_fails: dict[str, int] = {}
+        # 플랫폼 자동 차단 시각 (UTC ISO string)
+        self._platform_banned_until: dict[str, str] = {}
 
     def attach(self, bus: EventBus) -> None:
-        """Connect to EventBus. Subscribes to strike.before/after events."""
+        """Connect to EventBus. Subscribes to strike.before/after/failed events."""
         bus.on("strike.before", self._on_strike_before)
         bus.on("strike.after", self._on_strike_after)
+        bus.on("strike.failed", self._on_strike_failed)
         logger.info("Safety attached to EventBus")
+
+    async def _on_strike_failed(self, event: Event) -> None:
+        """Track consecutive failures for auto-ban."""
+        platform = event.data.get("platform", "")
+        error = event.data.get("error", "")
+        if platform:
+            self.record_strike_failure(platform, error)
 
     async def _on_strike_before(self, event: Event) -> str | None:
         """Validate before strike. Returns False to block."""
         platform = event.data.get("platform", "")
         action = event.data.get("action", "")
         content = event.data.get("content", "")
+
+        # 0. 플랫폼 자동 차단 체크
+        banned_until = self._platform_banned_until.get(platform, "")
+        if banned_until:
+            now = datetime.now(timezone.utc).isoformat()
+            if now < banned_until:
+                remaining = self._ban_remaining_hours(platform)
+                reason = f"{platform} 자동 차단 중 (연속 실패 감지, {remaining}시간 후 해제)"
+                logger.warning("Platform ban: %s", reason)
+                return reason
+            else:
+                # 차단 해제
+                del self._platform_banned_until[platform]
+                self._consecutive_fails.pop(platform, None)
+                logger.info("Platform ban 해제: %s", platform)
 
         # 1. rate limit 체크
         ok, reason = self.check_rate_limit(platform, action)
@@ -90,6 +122,44 @@ class Safety:
         action = record.action if hasattr(record, "action") else record.get("action", "")
         status = "ok" if response.get("status") == "posted" else "fail"
         self.record_action(platform, action, status)
+
+        # 성공하면 연속 실패 카운터 리셋
+        if status == "ok":
+            self._consecutive_fails.pop(platform, None)
+
+    def record_strike_failure(self, platform: str, error: str = "") -> None:
+        """Record a strike failure for consecutive fail tracking."""
+        count = self._consecutive_fails.get(platform, 0) + 1
+        self._consecutive_fails[platform] = count
+        logger.warning(
+            "Strike 실패 (%s): 연속 %d회 — %s",
+            platform,
+            count,
+            error[:80],
+        )
+
+        if count >= self.CONSECUTIVE_FAIL_THRESHOLD:
+            from datetime import timedelta
+
+            ban_dt = datetime.now(timezone.utc) + timedelta(minutes=self.PLATFORM_BAN_MINUTES)
+            self._platform_banned_until[platform] = ban_dt.isoformat()
+            logger.warning(
+                "🚫 %s 자동 차단: 연속 %d회 실패 → %d시간 차단",
+                platform,
+                count,
+                self.PLATFORM_BAN_MINUTES // 60,
+            )
+
+    def _ban_remaining_hours(self, platform: str) -> int:
+        banned_until = self._platform_banned_until.get(platform, "")
+        if not banned_until:
+            return 0
+        try:
+            ban_dt = datetime.fromisoformat(banned_until)
+            remaining = (ban_dt - datetime.now(timezone.utc)).total_seconds() / 3600
+            return max(0, int(remaining))
+        except (ValueError, TypeError):
+            return 0
 
     # ── Rate Limiter ──
 
