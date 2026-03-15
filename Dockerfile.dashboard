@@ -2,12 +2,17 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir aiohttp
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
-# dashboard + static만 복사 (나머지 모듈 불필요)
-COPY gwanjong_mcp/dashboard.py ./gwanjong_mcp/dashboard.py
-COPY gwanjong_mcp/static/ ./gwanjong_mcp/static/
-COPY gwanjong_mcp/__init__.py ./gwanjong_mcp/__init__.py
+COPY . /app/
+RUN pip install --no-cache-dir \
+    "devhub-social[all] @ git+https://github.com/SonAIengine/devhub-social.git" \
+    "mcp-pipeline @ git+https://github.com/SonAIengine/mcp-pipeline.git" \
+    aiohttp python-dotenv async_lru oauthlib \
+    && pip install --no-cache-dir -e . \
+    && rm -rf /root/.cache/pip
+
+ENV GWANJONG_DB_PATH=/data/memory.db
 
 EXPOSE 8585
 
