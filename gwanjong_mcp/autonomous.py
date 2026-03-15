@@ -219,13 +219,19 @@ class AutonomousLoop:
             logger.error("LLM 생성 실패: %s", opp.id, exc_info=True)
             return
 
+        # 자율 모드에서는 comment만 허용 (post는 승인 모드에서만)
+        action = ctx.suggested_approach
+        if not self.config.require_approval and action == "post":
+            action = "comment"
+            logger.info("자율 모드: post → comment 변환 (%s)", opp.title[:50])
+
         # approval 체크
         if self.config.require_approval:
             item = self.approval_queue.enqueue(
                 topic=result.topic,
                 opportunity=opp,
                 context=ctx,
-                action=ctx.suggested_approach,
+                action=action,
                 content=content,
             )
             result.actions_queued += 1
@@ -236,7 +242,7 @@ class AutonomousLoop:
                         "item_id": item.id,
                         "topic": result.topic,
                         "platform": opp.platform,
-                        "action": ctx.suggested_approach,
+                        "action": action,
                         "title": opp.title,
                     },
                 )
@@ -249,7 +255,7 @@ class AutonomousLoop:
         try:
             record, response = await pipeline.strike(
                 ctx,
-                ctx.suggested_approach,
+                action,
                 content,
                 bus=self.bus,
                 campaign_id=self.config.campaign_id,
