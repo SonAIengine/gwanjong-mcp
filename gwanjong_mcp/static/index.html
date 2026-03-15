@@ -332,6 +332,57 @@
   </div>
 </div>
 
+<!-- 팀원 수정 모달 -->
+<div class="modal-overlay" id="modal-edit-agent">
+  <div class="modal">
+    <h2>팀원 수정</h2>
+    <input type="hidden" id="e-id">
+    <div style="text-align:center;margin-bottom:16px">
+      <div class="agent-avatar" style="margin:0 auto"><img id="e-preview" src=""></div>
+    </div>
+    <div class="form-row"><span class="form-label">이름</span><input class="form-input" id="e-name" oninput="previewEditAvatar()"></div>
+    <div class="form-row"><span class="form-label">캐릭터 스타일</span>
+      <select class="form-input" id="e-style" onchange="previewEditAvatar()">
+        <option value="bottts-neutral">로봇</option>
+        <option value="fun-emoji">이모지</option>
+        <option value="pixel-art">픽셀</option>
+        <option value="adventurer">모험가</option>
+        <option value="thumbs">엄지</option>
+        <option value="icons">아이콘</option>
+      </select>
+    </div>
+    <div class="form-row"><span class="form-label">성격</span><input class="form-input" id="e-personality"></div>
+    <div class="form-row"><span class="form-label">담당 토픽</span><input class="form-input" id="e-topics"></div>
+    <div class="form-row" style="align-items:flex-start"><span class="form-label" style="margin-top:4px">담당 플랫폼</span>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <label class="form-check"><input type="checkbox" name="e-platform" value="devto"><span class="pi devto"></span>Dev.to</label>
+        <label class="form-check"><input type="checkbox" name="e-platform" value="bluesky"><span class="pi bluesky"></span>Bluesky</label>
+        <label class="form-check"><input type="checkbox" name="e-platform" value="twitter"><span class="pi twitter"></span>Twitter</label>
+        <label class="form-check"><input type="checkbox" name="e-platform" value="reddit"><span class="pi reddit"></span>Reddit</label>
+        <label class="form-check"><input type="checkbox" name="e-platform" value="github_discussions"><span class="pi github_discussions"></span>GitHub</label>
+        <label class="form-check"><input type="checkbox" name="e-platform" value="discourse"><span class="pi discourse"></span>Discourse</label>
+      </div>
+    </div>
+    <div class="form-row"><span class="form-label">말투</span>
+      <select class="form-input" id="e-tone">
+        <option value="casual-professional">캐주얼 프로</option>
+        <option value="conversational">대화형</option>
+        <option value="punchy">펀치라인</option>
+        <option value="blunt-helpful">직설 도움형</option>
+        <option value="technical-collaborative">기술 협업형</option>
+      </select>
+    </div>
+    <div class="form-row" style="gap:16px">
+      <label class="form-check"><input type="checkbox" id="e-approval"> 승인 필요</label>
+      <label class="form-check"><input type="checkbox" id="e-dry-run"> 테스트 모드</label>
+    </div>
+    <div class="btn-group" style="margin-top:16px; justify-content:flex-end">
+      <button class="btn" onclick="closeModal('modal-edit-agent')">취소</button>
+      <button class="btn primary" onclick="saveEditAgent()">저장</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const REFRESH = 30000;
 const PCOLORS = {devto:'#3b49df', bluesky:'#0085ff', twitter:'#1da1f2', reddit:'#ff4500', github_discussions:'#8957e5', discourse:'#e9573f'};
@@ -547,6 +598,7 @@ async function refreshAgents() {
           ${isRunning
             ? `<button class="btn danger" onclick="event.stopPropagation();agentStop('${a.id}')" style="font-size:11px;padding:4px 12px">정지</button>`
             : `<button class="btn success" onclick="event.stopPropagation();agentStart('${a.id}')" style="font-size:11px;padding:4px 12px">출근</button>`}
+          <button class="btn" onclick="event.stopPropagation();showEditAgent('${a.id}')" style="font-size:11px;padding:4px 12px">수정</button>
           <button class="btn danger" onclick="event.stopPropagation();agentDelete('${a.id}','${esc(a.name)}')" style="font-size:11px;padding:4px 12px">해고</button>
         </div>
       </div>`;
@@ -581,6 +633,59 @@ async function agentStart(id) {
 async function agentStop(id) {
   try {
     await fetch(`/api/agents/${id}/stop`, {method:'POST'});
+    refreshAgents();
+  } catch(e) { alert(e); }
+}
+
+function previewEditAvatar() {
+  const name = document.getElementById('e-name').value || 'edit';
+  const style = document.getElementById('e-style').value;
+  document.getElementById('e-preview').src = avatarUrl(style, name);
+}
+
+async function showEditAgent(id) {
+  try {
+    const r = await fetch('/api/agents');
+    const d = await r.json();
+    const agent = d.agents.find(a => a.id === id);
+    if (!agent) return;
+
+    document.getElementById('e-id').value = id;
+    document.getElementById('e-name').value = agent.name;
+    document.getElementById('e-style').value = agent.avatar_style;
+    document.getElementById('e-personality').value = agent.personality || '';
+    document.getElementById('e-topics').value = JSON.parse(agent.topics_json || '[]').join(', ');
+    document.getElementById('e-tone').value = agent.tone;
+    document.getElementById('e-approval').checked = !!agent.require_approval;
+    document.getElementById('e-dry-run').checked = !!agent.dry_run;
+
+    // 플랫폼 체크박스
+    const platforms = JSON.parse(agent.platforms_json || '[]');
+    document.querySelectorAll('input[name="e-platform"]').forEach(cb => {
+      cb.checked = platforms.includes(cb.value);
+    });
+
+    previewEditAvatar();
+    showModal('modal-edit-agent');
+  } catch(e) { console.error(e); }
+}
+
+async function saveEditAgent() {
+  const id = document.getElementById('e-id').value;
+  const data = {
+    name: document.getElementById('e-name').value,
+    avatar_style: document.getElementById('e-style').value,
+    avatar_seed: document.getElementById('e-name').value,
+    personality: document.getElementById('e-personality').value,
+    topics: document.getElementById('e-topics').value.split(',').map(s=>s.trim()).filter(Boolean),
+    platforms: [...document.querySelectorAll('input[name="e-platform"]:checked')].map(c=>c.value),
+    tone: document.getElementById('e-tone').value,
+    require_approval: document.getElementById('e-approval').checked ? 1 : 0,
+    dry_run: document.getElementById('e-dry-run').checked ? 1 : 0,
+  };
+  closeModal('modal-edit-agent');
+  try {
+    await fetch(`/api/agents/${id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
     refreshAgents();
   } catch(e) { alert(e); }
 }
