@@ -202,7 +202,18 @@ async def scout(
     # 점수화 및 정렬
     scored = [(post, _score_relevance(post, topic)) for post in all_posts]
     scored.sort(key=lambda x: x[1], reverse=True)
-    top = scored[:limit]
+
+    # author 분산 선택 — 같은 저자 최대 1건
+    top: list[tuple[Post, float]] = []
+    seen_authors: set[str] = set()
+    for post, score in scored:
+        author = post.author.lower()
+        if author in seen_authors:
+            continue
+        seen_authors.add(author)
+        top.append((post, score))
+        if len(top) >= limit:
+            break
 
     # Opportunity 생성
     opportunities: dict[str, Opportunity] = {}
