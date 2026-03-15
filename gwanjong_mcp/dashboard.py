@@ -593,8 +593,8 @@ async def handle_api_agent_create(request: web.Request) -> web.Response:
     try:
         conn.execute(
             """INSERT INTO agents (id, name, avatar_style, avatar_seed, personality,
-                topics_json, platforms_json, tone, max_length, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?)""",
+                topics_json, platforms_json, tone, max_length, require_approval, dry_run, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?)""",
             (
                 agent_id,
                 data["name"],
@@ -605,6 +605,8 @@ async def handle_api_agent_create(request: web.Request) -> web.Response:
                 json.dumps(data.get("platforms", ["devto"])),
                 data.get("tone", "casual-professional"),
                 data.get("max_length", 500),
+                1 if data.get("require_approval", True) else 0,
+                1 if data.get("dry_run", False) else 0,
                 now,
             ),
         )
@@ -636,6 +638,8 @@ async def handle_api_agent_update(request: web.Request) -> web.Response:
             "personality": "personality",
             "tone": "tone",
             "max_length": "max_length",
+            "require_approval": "require_approval",
+            "dry_run": "dry_run",
         }
         json_fields = {"topics": "topics_json", "platforms": "platforms_json"}
 
@@ -703,7 +707,10 @@ async def handle_api_agent_start(request: web.Request) -> web.Response:
     if platforms:
         cmd.extend(["--platforms", ",".join(platforms)])
     cmd.extend(["--max-actions", "3"])
-    cmd.append("--require-approval")
+    if agent.get("require_approval", 1):
+        cmd.append("--require-approval")
+    if agent.get("dry_run", 0):
+        cmd.append("--dry-run")
 
     _agent_logs[agent_id] = [f"[sys] {agent['name']} 시작: {' '.join(cmd)}"]
 

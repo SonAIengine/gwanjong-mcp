@@ -292,6 +292,10 @@
         <option value="technical-collaborative">기술 협업형</option>
       </select>
     </div>
+    <div class="form-row" style="gap:16px">
+      <label class="form-check"><input type="checkbox" id="a-approval" checked> 승인 필요</label>
+      <label class="form-check"><input type="checkbox" id="a-dry-run"> 테스트 모드</label>
+    </div>
     <div class="btn-group" style="margin-top:16px; justify-content:flex-end">
       <button class="btn" onclick="closeModal('modal-agent')">취소</button>
       <button class="btn primary" onclick="createAgent()">추가</button>
@@ -495,6 +499,8 @@ async function createAgent() {
     topics: document.getElementById('a-topics').value.split(',').map(s=>s.trim()).filter(Boolean),
     platforms: document.getElementById('a-platforms').value.split(',').map(s=>s.trim()).filter(Boolean),
     tone: document.getElementById('a-tone').value,
+    require_approval: document.getElementById('a-approval').checked,
+    dry_run: document.getElementById('a-dry-run').checked,
   };
   closeModal('modal-agent');
   try {
@@ -522,7 +528,7 @@ async function refreshAgents() {
           ${platforms.map(p=>`<span class="camp-tag"><span class="pi ${p}"></span>${p}</span>`).join('')}
           ${topics.map(t=>`<span class="camp-tag">${esc(t)}</span>`).join('')}
         </div>
-        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">${TONE_KO[a.tone]||a.tone}</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">${TONE_KO[a.tone]||a.tone}${a.require_approval ? '' : ' · <span style="color:var(--green)">자율 모드</span>'}${a.dry_run ? ' · <span style="color:var(--yellow)">테스트</span>' : ''}</div>
         <div class="btn-group" style="justify-content:center">
           ${isRunning
             ? `<button class="btn danger" onclick="event.stopPropagation();agentStop('${a.id}')" style="font-size:11px;padding:4px 12px">정지</button>`

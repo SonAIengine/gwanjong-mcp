@@ -229,6 +229,8 @@ def ensure_agents_table(conn: sqlite3.Connection) -> None:
             platforms_json TEXT NOT NULL DEFAULT '[]',
             tone TEXT NOT NULL DEFAULT 'casual-professional',
             max_length INTEGER NOT NULL DEFAULT 500,
+            require_approval INTEGER NOT NULL DEFAULT 1,
+            dry_run INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'idle',
             created_at TEXT NOT NULL
         )
