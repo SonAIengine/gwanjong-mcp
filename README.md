@@ -2,15 +2,17 @@
 
 # gwanjong-mcp
 
-**Stateful Pipeline MCP server for AI social agents.**
+**AI Growth OS — Campaign-driven social engagement MCP server.**
 
-Engage developer communities authentically. Comment to connect, post to promote.
+Engage developer communities authentically. Track everything by campaign.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Test](https://github.com/SonAIengine/gwanjong-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/SonAIengine/gwanjong-mcp/actions/workflows/test.yml)
 [![Lint](https://github.com/SonAIengine/gwanjong-mcp/actions/workflows/lint.yml/badge.svg)](https://github.com/SonAIengine/gwanjong-mcp/actions/workflows/lint.yml)
 [![PyPI](https://img.shields.io/pypi/v/gwanjong-mcp)](https://pypi.org/project/gwanjong-mcp/)
+
+**English** · [한국어](README.ko.md)
 
 </div>
 
