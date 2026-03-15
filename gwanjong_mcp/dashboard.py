@@ -807,8 +807,23 @@ async def handle_index(request: web.Request) -> web.Response:
     return web.FileResponse(index_path)
 
 
+async def _on_startup(app: web.Application) -> None:
+    """Reset agent statuses on startup — subprocess는 이미 죽었으므로 idle로 복구."""
+    conn = _get_db()
+    try:
+        updated = conn.execute(
+            "UPDATE agents SET status = 'idle' WHERE status = 'running'"
+        ).rowcount
+        conn.commit()
+        if updated:
+            logger.info("서버 재시작: %d개 에이전트 상태를 idle로 복구", updated)
+    finally:
+        conn.close()
+
+
 def create_app() -> web.Application:
     app = web.Application()
+    app.on_startup.append(_on_startup)
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/summary", handle_api_summary)
     # Daemon control
