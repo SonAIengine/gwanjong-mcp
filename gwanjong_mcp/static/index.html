@@ -226,7 +226,7 @@
     <div class="card"><h3>주간 활동</h3><div class="chart" id="weekly-chart"></div><div class="chart-legend" id="chart-legend"></div></div>
     <div class="card"><h3>미답변 답글</h3><div id="pending-replies"></div></div>
   </div>
-  <div class="card" style="margin-bottom:20px"><h3>승인 대기</h3><div id="pending-approvals"></div>
+  <div class="card" style="margin-bottom:20px"><h3>승인 대기 <span id="approval-bulk-btns" style="float:right;display:none"><button class="btn success" onclick="approvalBulk('approve')" style="padding:2px 10px;font-size:11px">전체 승인</button> <button class="btn danger" onclick="approvalBulk('reject')" style="padding:2px 10px;font-size:11px">전체 거부</button></span></h3><div id="pending-approvals"></div>
     <div id="failed-approvals-wrap" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
       <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleFailed()">
         <span style="font-size:11px;color:var(--text2)" id="failed-toggle-label">실패 0건</span>
@@ -485,9 +485,12 @@ function renderPendingApprovals(approvals, failed, stats) {
   const failedWrap = document.getElementById('failed-approvals-wrap');
   const failedLabel = document.getElementById('failed-toggle-label');
 
+  const bulkBtns = document.getElementById('approval-bulk-btns');
   if (!approvals.length) {
     el.innerHTML = '<div class="empty">승인 대기 항목 없음</div>';
+    if (bulkBtns) bulkBtns.style.display = 'none';
   } else {
+    if (bulkBtns) bulkBtns.style.display = 'inline';
     el.innerHTML = approvals.slice(0,10).map(a => `<div class="approval-item">
       <div class="approval-header"><span style="font-size:13px;font-weight:600">${esc(a.title)}</span><span style="color:var(--yellow);font-size:11px">대기</span></div>
       <div class="approval-meta"><span class="pi ${a.platform}"></span>${a.platform} · ${ACTION_KO[a.action]||a.action} · ${timeAgo(a.created_at)}</div>
@@ -526,14 +529,28 @@ function toggleFailed() {
 function renderTimeline(activity) {
   const el = document.getElementById('timeline');
   if (!activity.length) { el.innerHTML = '<div class="empty">활동 기록 없음</div>'; return; }
-  el.innerHTML = activity.slice(0,15).map(a => `<div class="tl-item">
+  el.innerHTML = activity.slice(0,20).map(a => `<div class="tl-item" style="flex-wrap:wrap">
     <span class="tl-time">${timeAgo(a.timestamp)}</span><span class="pi ${a.platform}"></span>
     <span class="tl-badge ${a.action}">${ACTION_KO[a.action]||a.action}</span>
-    <div class="tl-content">${a.content ? `<span style="color:var(--text)">${esc(trunc(a.content,60))}</span> ` : ''}${a.post_url ? `<a href="${a.post_url}" target="_blank">${trunc(a.post_url,40)}</a>` : ''}</div></div>`).join('');
+    <div class="tl-content" style="white-space:normal;-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden">${a.content ? esc(a.content) : ''}${a.post_url ? ` <a href="${a.post_url}" target="_blank" style="white-space:nowrap">링크 ↗</a>` : ''}</div></div>`).join('');
 }
 
 async function approvalAction(id, action) {
   try { await fetch(`/api/approvals/${id}/${action}`, {method:'POST'}); fetchSummary(); } catch(e) { alert(e); }
+}
+
+async function approvalBulk(action) {
+  const label = action === 'approve' ? '승인' : '거부';
+  if (!confirm(`대기 중인 항목을 전체 ${label}할까요?`)) return;
+  try {
+    const r = await fetch('/api/summary');
+    const d = await r.json();
+    const items = d.pending_approvals || [];
+    for (const a of items) {
+      await fetch(`/api/approvals/${a.id}/${action}`, {method:'POST'});
+    }
+    fetchSummary();
+  } catch(e) { alert(e); }
 }
 
 // ── 에이전트 (팀원) ──
