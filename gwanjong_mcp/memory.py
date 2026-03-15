@@ -16,6 +16,11 @@ from .storage import DB_PATH, ensure_actions_tables, ensure_scout_runs_table, ge
 logger = logging.getLogger(__name__)
 
 
+def _normalize_url(url: str) -> str:
+    """Remove fragment (#comments etc.) for consistent URL matching."""
+    return url.split("#")[0] if url else ""
+
+
 def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
     """SQLite connection. Creates tables if they don't exist."""
     conn = get_db(db_path)
@@ -116,11 +121,17 @@ class Memory:
                     agent_id,
                 ),
             )
-            # seen_posts에 활동 표시
-            if url:
+            # seen_posts에 활동 표시 (URL 정규화 — #comments 등 제거)
+            norm_url = _normalize_url(url)
+            if norm_url:
                 conn.execute(
-                    "UPDATE seen_posts SET acted = 1 WHERE post_url = ?",
-                    (url,),
+                    "UPDATE seen_posts SET acted = 1 WHERE post_url = ? OR post_url = ?",
+                    (url, norm_url),
+                )
+                # seen_posts에 없으면 새로 추가
+                conn.execute(
+                    "INSERT OR IGNORE INTO seen_posts (post_url, platform, first_seen, acted) VALUES (?, ?, ?, 1)",
+                    (norm_url, platform, timestamp),
                 )
             conn.commit()
         finally:
@@ -184,9 +195,10 @@ class Memory:
             filtered = {}
             for opp_id, opp in opportunities.items():
                 url = opp.url if hasattr(opp, "url") else opp.get("url", "")
+                norm = _normalize_url(url)
                 row = conn.execute(
-                    "SELECT acted FROM seen_posts WHERE post_url = ? AND acted = 1",
-                    (url,),
+                    "SELECT acted FROM seen_posts WHERE (post_url = ? OR post_url = ?) AND acted = 1",
+                    (url, norm),
                 ).fetchone()
                 if not row:
                     filtered[opp_id] = opp
