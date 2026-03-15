@@ -226,7 +226,15 @@
     <div class="card"><h3>주간 활동</h3><div class="chart" id="weekly-chart"></div><div class="chart-legend" id="chart-legend"></div></div>
     <div class="card"><h3>미답변 답글</h3><div id="pending-replies"></div></div>
   </div>
-  <div class="card" style="margin-bottom:20px"><h3>승인 대기</h3><div id="pending-approvals"></div></div>
+  <div class="card" style="margin-bottom:20px"><h3>승인 대기</h3><div id="pending-approvals"></div>
+    <div id="failed-approvals-wrap" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleFailed()">
+        <span style="font-size:11px;color:var(--text2)" id="failed-toggle-label">실패 0건</span>
+        <span style="font-size:11px;color:var(--text2)" id="failed-toggle-btn">펼치기</span>
+      </div>
+      <div id="failed-approvals" style="display:none"></div>
+    </div>
+  </div>
   <div class="card"><h3>최근 활동</h3><div id="timeline"></div></div>
 </div>
 
@@ -409,22 +417,46 @@ function renderPendingReplies(replies) {
 
 function renderPendingApprovals(approvals, failed, stats) {
   const el = document.getElementById('pending-approvals');
-  if (!approvals.length && !(failed||[]).length) { el.innerHTML = '<div class="empty">승인 대기 항목 없음</div>'; return; }
-  el.innerHTML = approvals.slice(0,5).map(a => `<div class="approval-item">
-    <div class="approval-header"><span style="font-size:13px;font-weight:600">${esc(a.title)}</span><span style="color:var(--yellow);font-size:11px">대기</span></div>
-    <div class="approval-meta"><span class="pi ${a.platform}"></span>${a.platform} · ${ACTION_KO[a.action]||a.action} · ${timeAgo(a.created_at)}</div>
-    ${a.post_url ? `<a href="${a.post_url}" target="_blank" style="font-size:11px;display:block;margin-top:4px;color:var(--accent)">${trunc(a.post_url,60)} ↗</a>` : ''}
-    ${a.content ? `<div style="font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;margin-top:6px;line-height:1.5;white-space:pre-wrap">${esc(a.content)}</div>` : ''}
-    <div class="btn-group" style="margin-top:8px">
-      <button class="btn success" onclick="approvalAction(${a.id},'approve')" style="padding:3px 10px;font-size:11px">승인</button>
-      <button class="btn danger" onclick="approvalAction(${a.id},'reject')" style="padding:3px 10px;font-size:11px">거부</button>
-    </div></div>`).join('') +
-    (failed||[]).slice(0,3).map(a => `<div class="approval-item">
-    <div class="approval-header"><span style="font-size:13px;font-weight:600">${esc(a.title)}</span><span style="color:var(--red);font-size:11px">실패</span></div>
-    ${a.post_url ? `<a href="${a.post_url}" target="_blank" style="font-size:11px;display:block;margin-top:4px;color:var(--accent)">${trunc(a.post_url,60)} ↗</a>` : ''}
-    ${a.content ? `<div style="font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;margin-top:6px;line-height:1.5;white-space:pre-wrap">${esc(a.content)}</div>` : ''}
-    <div style="font-size:11px;color:var(--red);margin-top:4px">${esc(trunc(a.last_error||'',120))}</div>
-    <button class="btn" onclick="approvalAction(${a.id},'retry')" style="margin-top:6px;padding:3px 10px;font-size:11px">재시도</button></div>`).join('');
+  const failedEl = document.getElementById('failed-approvals');
+  const failedWrap = document.getElementById('failed-approvals-wrap');
+  const failedLabel = document.getElementById('failed-toggle-label');
+
+  if (!approvals.length) {
+    el.innerHTML = '<div class="empty">승인 대기 항목 없음</div>';
+  } else {
+    el.innerHTML = approvals.slice(0,10).map(a => `<div class="approval-item">
+      <div class="approval-header"><span style="font-size:13px;font-weight:600">${esc(a.title)}</span><span style="color:var(--yellow);font-size:11px">대기</span></div>
+      <div class="approval-meta"><span class="pi ${a.platform}"></span>${a.platform} · ${ACTION_KO[a.action]||a.action} · ${timeAgo(a.created_at)}</div>
+      ${a.post_url ? `<a href="${a.post_url}" target="_blank" style="font-size:11px;display:block;margin-top:4px;color:var(--accent)">${trunc(a.post_url,60)} ↗</a>` : ''}
+      ${a.content ? `<div style="font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;margin-top:6px;line-height:1.5;white-space:pre-wrap">${esc(a.content)}</div>` : ''}
+      <div class="btn-group" style="margin-top:8px">
+        <button class="btn success" onclick="approvalAction(${a.id},'approve')" style="padding:3px 10px;font-size:11px">승인</button>
+        <button class="btn danger" onclick="approvalAction(${a.id},'reject')" style="padding:3px 10px;font-size:11px">거부</button>
+      </div></div>`).join('');
+  }
+
+  // 실패 항목은 접힌 상태로
+  const failedItems = (failed||[]);
+  if (!failedItems.length) {
+    failedWrap.style.display = 'none';
+    return;
+  }
+  failedWrap.style.display = 'block';
+  failedLabel.textContent = `재시도 대기 ${failedItems.length}건 (자동 재시도됨)`;
+  failedEl.innerHTML = failedItems.slice(0,5).map(a => `<div class="approval-item">
+    <div class="approval-header"><span style="font-size:12px;font-weight:600;color:var(--text2)">${esc(a.title)}</span></div>
+    <div style="font-size:11px;color:var(--text2);margin-top:2px">${esc(trunc(a.last_error||'',60))}</div>
+    <div class="btn-group" style="margin-top:6px">
+      <button class="btn" onclick="approvalAction(${a.id},'retry')" style="padding:2px 8px;font-size:11px">재시도</button>
+      <button class="btn danger" onclick="approvalAction(${a.id},'reject')" style="padding:2px 8px;font-size:11px">삭제</button>
+    </div></div>`).join('');
+}
+
+let _failedVisible = false;
+function toggleFailed() {
+  _failedVisible = !_failedVisible;
+  document.getElementById('failed-approvals').style.display = _failedVisible ? 'block' : 'none';
+  document.getElementById('failed-toggle-btn').textContent = _failedVisible ? '접기' : '펼치기';
 }
 
 function renderTimeline(activity) {
