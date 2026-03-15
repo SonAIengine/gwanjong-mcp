@@ -37,6 +37,14 @@ _SPAM_KEYWORDS = {
     "🐳",
     "💎",
     "🚀",
+    # 미니어처 게임 (Marvel Crisis Protocol = MCP 동명이의)
+    "miniature",
+    "painting",
+    "tabletop",
+    "wargame",
+    "crisis protocol",
+    "atomicmass",
+    "paintingprotocol",
 }
 
 
@@ -203,9 +211,27 @@ async def scout(
     scored = [(post, _score_relevance(post, topic)) for post in all_posts]
     scored.sort(key=lambda x: x[1], reverse=True)
 
-    # author 분산 선택 — 같은 저자 최대 1건
-    top: list[tuple[Post, float]] = []
+    # author 분산 선택 — 같은 저자 최대 1건 + 이전 활동 저자 제외
+    from .storage import get_db
+
     seen_authors: set[str] = set()
+    try:
+        conn = get_db()
+        # 이미 활동한 게시글 URL과 매칭되는 post의 author는 all_posts에서 찾기
+        acted_urls = {
+            r[0].split("#")[0]
+            for r in conn.execute(
+                "SELECT DISTINCT post_url FROM actions WHERE action = 'comment' AND post_url != ''"
+            ).fetchall()
+        }
+        conn.close()
+        for post in all_posts:
+            if post.url in acted_urls:
+                seen_authors.add(post.author.lower())
+    except Exception:
+        pass
+
+    top: list[tuple[Post, float]] = []
     for post, score in scored:
         author = post.author.lower()
         if author in seen_authors:
