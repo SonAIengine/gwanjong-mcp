@@ -74,7 +74,7 @@
 
   /* Forms */
   .form-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
-  .form-label { font-size: 12px; color: var(--text2); min-width: 80px; }
+  .form-label { font-size: 12px; color: var(--text2); min-width: 90px; }
   .form-input {
     background: var(--bg); border: 1px solid var(--border); color: var(--text);
     border-radius: 6px; padding: 6px 10px; font-size: 13px; flex: 1; min-width: 120px;
@@ -194,107 +194,107 @@
 
 <nav>
   <div class="nav-brand"><span>gwanjong</span> OS</div>
-  <div class="nav-tab active" data-tab="overview">Overview</div>
-  <div class="nav-tab" data-tab="daemon">Daemon</div>
-  <div class="nav-tab" data-tab="campaigns">Campaigns</div>
-  <div class="nav-right"><span id="updated-at">loading...</span></div>
+  <div class="nav-tab active" data-tab="overview">현황판</div>
+  <div class="nav-tab" data-tab="daemon">에이전트</div>
+  <div class="nav-tab" data-tab="campaigns">캠페인</div>
+  <div class="nav-right"><span id="updated-at">로딩 중...</span></div>
 </nav>
 
 <div class="container">
 
-<!-- ══ OVERVIEW TAB ══ -->
+<!-- ══ 현황판 탭 ══ -->
 <div class="tab-content active" id="tab-overview">
   <div class="totals" id="totals"></div>
   <div class="grid">
-    <div class="card"><h3>Platform Activity</h3><div id="platform-stats"></div></div>
-    <div class="card"><h3>Rate Limits</h3><div id="rate-limits"></div></div>
-    <div class="card"><h3>Engagement</h3><div id="engagement"></div></div>
+    <div class="card"><h3>플랫폼 활동</h3><div id="platform-stats"></div></div>
+    <div class="card"><h3>일일 한도</h3><div id="rate-limits"></div></div>
+    <div class="card"><h3>참여율</h3><div id="engagement"></div></div>
   </div>
   <div class="grid">
-    <div class="card"><h3>Weekly Activity</h3><div class="chart" id="weekly-chart"></div><div class="chart-legend" id="chart-legend"></div></div>
-    <div class="card"><h3>Pending Replies</h3><div id="pending-replies"></div></div>
+    <div class="card"><h3>주간 활동</h3><div class="chart" id="weekly-chart"></div><div class="chart-legend" id="chart-legend"></div></div>
+    <div class="card"><h3>미답변 답글</h3><div id="pending-replies"></div></div>
   </div>
-  <div class="card" style="margin-bottom:20px"><h3>Approval Queue</h3><div id="pending-approvals"></div></div>
-  <div class="card"><h3>Recent Activity</h3><div id="timeline"></div></div>
+  <div class="card" style="margin-bottom:20px"><h3>승인 대기</h3><div id="pending-approvals"></div></div>
+  <div class="card"><h3>최근 활동</h3><div id="timeline"></div></div>
 </div>
 
-<!-- ══ DAEMON TAB ══ -->
+<!-- ══ 에이전트 탭 ══ -->
 <div class="tab-content" id="tab-daemon">
   <div class="grid">
     <div class="card">
-      <h3>Status</h3>
+      <h3>에이전트 상태</h3>
       <div class="daemon-status" id="daemon-status">
         <div class="daemon-dot stopped"></div>
-        <span class="daemon-label">Stopped</span>
+        <span class="daemon-label">정지됨</span>
       </div>
       <div class="btn-group" id="daemon-btns">
-        <button class="btn success" id="btn-daemon-start" onclick="showDaemonConfig()">Start Daemon</button>
-        <button class="btn danger" id="btn-daemon-stop" onclick="stopDaemon()" disabled>Stop</button>
+        <button class="btn success" id="btn-daemon-start" onclick="showDaemonConfig()">에이전트 시작</button>
+        <button class="btn danger" id="btn-daemon-stop" onclick="stopDaemon()" disabled>정지</button>
       </div>
     </div>
     <div class="card">
-      <h3>Configuration</h3>
-      <div id="daemon-config-display" style="font-size:13px; color: var(--text2);">Not running</div>
+      <h3>실행 설정</h3>
+      <div id="daemon-config-display" style="font-size:13px; color: var(--text2);">실행 중이 아닙니다</div>
     </div>
   </div>
   <div class="card" style="margin-top:16px">
-    <h3>Daemon Log <button class="btn" onclick="refreshDaemonLogs()" style="float:right;padding:2px 8px;font-size:11px">Refresh</button></h3>
-    <div class="log-box" id="daemon-logs"><div class="empty">No logs</div></div>
+    <h3>실행 로그 <button class="btn" onclick="refreshDaemonLogs()" style="float:right;padding:2px 8px;font-size:11px">새로고침</button></h3>
+    <div class="log-box" id="daemon-logs"><div class="empty">로그 없음</div></div>
   </div>
 </div>
 
-<!-- ══ CAMPAIGNS TAB ══ -->
+<!-- ══ 캠페인 탭 ══ -->
 <div class="tab-content" id="tab-campaigns">
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-    <h2 style="font-size:18px;">Campaigns</h2>
-    <button class="btn primary" onclick="showCreateCampaign()">+ New Campaign</button>
+    <h2 style="font-size:18px;">캠페인</h2>
+    <button class="btn primary" onclick="showCreateCampaign()">+ 새 캠페인</button>
   </div>
-  <div class="camp-list" id="campaign-list"><div class="empty">Loading...</div></div>
+  <div class="camp-list" id="campaign-list"><div class="empty">로딩 중...</div></div>
   <div id="campaign-report" style="margin-top:20px"></div>
 </div>
 
 </div><!-- /container -->
 
-<!-- ══ MODALS ══ -->
+<!-- ══ 모달 ══ -->
 
-<!-- Daemon Start Modal -->
+<!-- 에이전트 시작 모달 -->
 <div class="modal-overlay" id="modal-daemon">
   <div class="modal">
-    <h2>Start Daemon</h2>
-    <div class="form-row"><span class="form-label">Topics</span><input class="form-input" id="d-topics" value="MCP,LLM" placeholder="comma-separated"></div>
-    <div class="form-row"><span class="form-label">Platforms</span><input class="form-input" id="d-platforms" placeholder="all (leave empty)"></div>
-    <div class="form-row"><span class="form-label">Interval (h)</span><input class="form-input" id="d-interval" type="number" value="4" step="0.5" min="0.5"></div>
-    <div class="form-row"><span class="form-label">Max Actions</span><input class="form-input" id="d-max-actions" type="number" value="3" min="1"></div>
-    <div class="form-row"><span class="form-label">Max Cycles</span><input class="form-input" id="d-max-cycles" type="number" placeholder="unlimited"></div>
-    <div class="form-row"><span class="form-label">Campaign</span><input class="form-input" id="d-campaign" placeholder="camp_xxx (optional)"></div>
+    <h2>에이전트 시작</h2>
+    <div class="form-row"><span class="form-label">토픽</span><input class="form-input" id="d-topics" value="MCP,LLM" placeholder="쉼표로 구분"></div>
+    <div class="form-row"><span class="form-label">플랫폼</span><input class="form-input" id="d-platforms" placeholder="전체 (비워두면 전체)"></div>
+    <div class="form-row"><span class="form-label">주기 (시간)</span><input class="form-input" id="d-interval" type="number" value="4" step="0.5" min="0.5"></div>
+    <div class="form-row"><span class="form-label">최대 활동 수</span><input class="form-input" id="d-max-actions" type="number" value="3" min="1"></div>
+    <div class="form-row"><span class="form-label">최대 사이클</span><input class="form-input" id="d-max-cycles" type="number" placeholder="무제한"></div>
+    <div class="form-row"><span class="form-label">캠페인 연동</span><input class="form-input" id="d-campaign" placeholder="camp_xxx (선택)"></div>
     <div class="form-row" style="gap:16px">
-      <label class="form-check"><input type="checkbox" id="d-approval"> Require Approval</label>
-      <label class="form-check"><input type="checkbox" id="d-dry-run"> Dry Run</label>
-      <label class="form-check"><input type="checkbox" id="d-auto-plan"> Auto Plan</label>
+      <label class="form-check"><input type="checkbox" id="d-approval"> 승인 필요</label>
+      <label class="form-check"><input type="checkbox" id="d-dry-run"> 테스트 모드</label>
+      <label class="form-check"><input type="checkbox" id="d-auto-plan"> 자동 플랜</label>
     </div>
     <div class="btn-group" style="margin-top:16px; justify-content:flex-end">
-      <button class="btn" onclick="closeModal('modal-daemon')">Cancel</button>
-      <button class="btn primary" onclick="startDaemon()">Start</button>
+      <button class="btn" onclick="closeModal('modal-daemon')">취소</button>
+      <button class="btn primary" onclick="startDaemon()">시작</button>
     </div>
   </div>
 </div>
 
-<!-- Campaign Create Modal -->
+<!-- 캠페인 생성 모달 -->
 <div class="modal-overlay" id="modal-campaign">
   <div class="modal">
-    <h2>New Campaign</h2>
-    <div class="form-row"><span class="form-label">Name</span><input class="form-input" id="c-name" placeholder="MCP Launch Q1"></div>
-    <div class="form-row"><span class="form-label">Objective</span>
-      <select class="form-input" id="c-objective"><option value="awareness">Awareness</option><option value="engagement">Engagement</option><option value="conversion">Conversion</option></select>
+    <h2>새 캠페인 만들기</h2>
+    <div class="form-row"><span class="form-label">이름</span><input class="form-input" id="c-name" placeholder="MCP Launch Q1"></div>
+    <div class="form-row"><span class="form-label">목표</span>
+      <select class="form-input" id="c-objective"><option value="awareness">인지도</option><option value="engagement">참여</option><option value="conversion">전환</option></select>
     </div>
-    <div class="form-row"><span class="form-label">Topics</span><input class="form-input" id="c-topics" placeholder="MCP, LLM (comma-separated)"></div>
-    <div class="form-row"><span class="form-label">Platforms</span><input class="form-input" id="c-platforms" placeholder="devto, twitter"></div>
-    <div class="form-row"><span class="form-label">ICP</span><input class="form-input" id="c-icp" placeholder="Backend devs building AI tools"></div>
-    <div class="form-row"><span class="form-label">CTA</span><input class="form-input" id="c-cta" placeholder="Try graph-tool-call"></div>
-    <div class="form-row"><span class="form-label">KPI Target</span><input class="form-input" id="c-kpi" placeholder='{"comments": 50, "posts": 10}'></div>
+    <div class="form-row"><span class="form-label">토픽</span><input class="form-input" id="c-topics" placeholder="MCP, LLM (쉼표 구분)"></div>
+    <div class="form-row"><span class="form-label">플랫폼</span><input class="form-input" id="c-platforms" placeholder="devto, twitter"></div>
+    <div class="form-row"><span class="form-label">타깃 고객</span><input class="form-input" id="c-icp" placeholder="AI 도구를 만드는 백엔드 개발자"></div>
+    <div class="form-row"><span class="form-label">CTA</span><input class="form-input" id="c-cta" placeholder="graph-tool-call 써보기"></div>
+    <div class="form-row"><span class="form-label">KPI 목표</span><input class="form-input" id="c-kpi" placeholder='{"comments": 50, "posts": 10}'></div>
     <div class="btn-group" style="margin-top:16px; justify-content:flex-end">
-      <button class="btn" onclick="closeModal('modal-campaign')">Cancel</button>
-      <button class="btn primary" onclick="createCampaign()">Create</button>
+      <button class="btn" onclick="closeModal('modal-campaign')">취소</button>
+      <button class="btn primary" onclick="createCampaign()">생성</button>
     </div>
   </div>
 </div>
@@ -303,6 +303,9 @@
 const REFRESH = 30000;
 const PCOLORS = {devto:'#3b49df', bluesky:'#0085ff', twitter:'#1da1f2', reddit:'#ff4500', github_discussions:'#8957e5', discourse:'#e9573f'};
 const PNAMES = Object.keys(PCOLORS);
+const ACTION_KO = {comment:'댓글', post:'포스트', upvote:'추천'};
+const OBJ_KO = {awareness:'인지도', engagement:'참여', conversion:'전환'};
+const STATUS_KO = {active:'진행중', paused:'일시정지', completed:'완료', draft:'초안', pending:'대기', failed:'실패'};
 
 // ── Tab Navigation ──
 document.querySelectorAll('.nav-tab').forEach(tab => {
@@ -320,13 +323,13 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
 function showModal(id) { document.getElementById(id).classList.add('show'); }
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 
-// ── Overview ──
+// ── 현황판 ──
 async function fetchSummary() {
   try { const r = await fetch('/api/summary'); renderOverview(await r.json()); } catch(e) { console.error(e); }
 }
 
 function renderOverview(d) {
-  document.getElementById('updated-at').textContent = new Date(d.generated_at).toLocaleTimeString('ko-KR');
+  document.getElementById('updated-at').textContent = '갱신: ' + new Date(d.generated_at).toLocaleTimeString('ko-KR');
   renderTotals(d.totals);
   renderPlatformStats(d.platforms);
   renderRateLimits(d.rate_limits);
@@ -339,8 +342,8 @@ function renderOverview(d) {
 
 function renderTotals(t) {
   document.getElementById('totals').innerHTML = [
-    ['total_actions','Actions'], ['total_seen_posts','Seen'], ['total_replies','Replies'],
-    ['pending_replies','Pending'], ['pending_approvals','Approvals']
+    ['total_actions','총 활동'], ['total_seen_posts','탐색한 글'], ['total_replies','받은 답글'],
+    ['pending_replies','미답변'], ['pending_approvals','승인 대기']
   ].map(([k,l]) => `<div class="total-item"><div class="num">${t[k]||0}</div><div class="label">${l}</div></div>`).join('');
 }
 
@@ -348,7 +351,7 @@ function renderPlatformStats(platforms) {
   document.getElementById('platform-stats').innerHTML = platforms.map(p => `
     <div class="stat-row">
       <div class="stat-label"><span class="pi ${p.platform}"></span>${p.platform}</div>
-      <div class="stat-values"><span class="today">${p.today} today</span><span class="week">${p.week} /wk</span><span class="total" style="font-size:12px">${p.total}</span></div>
+      <div class="stat-values"><span class="today">오늘 ${p.today}</span><span class="week">주간 ${p.week}</span><span class="total" style="font-size:12px">총 ${p.total}</span></div>
     </div>`).join('');
 }
 
@@ -356,9 +359,9 @@ function renderRateLimits(limits) {
   document.getElementById('rate-limits').innerHTML = limits.map(l => {
     const pct = l.comments.max > 0 ? (l.comments.used / l.comments.max * 100) : 0;
     const cls = pct >= 80 ? 'high' : pct >= 50 ? 'mid' : 'low';
-    const cd = l.in_cooldown ? `<div class="cooldown active">cooldown ${Math.ceil(l.cooldown_remaining_min)}m</div>` : '';
+    const cd = l.in_cooldown ? `<div class="cooldown active">대기 중 ${Math.ceil(l.cooldown_remaining_min)}분</div>` : '';
     return `<div class="rate-item">
-      <div class="rate-header"><span><span class="pi ${l.platform}"></span>${l.platform}</span><span>${l.comments.used}/${l.comments.max} comments</span></div>
+      <div class="rate-header"><span><span class="pi ${l.platform}"></span>${l.platform}</span><span>댓글 ${l.comments.used}/${l.comments.max}</span></div>
       <div class="rate-bar"><div class="rate-fill ${cls}" style="width:${Math.min(pct,100)}%"></div></div>${cd}</div>`;
   }).join('');
 }
@@ -368,7 +371,7 @@ function renderWeeklyChart(chart) {
   const max = Math.max(...chart.map(d => d.total), 1);
   el.innerHTML = chart.map(d => {
     const h = Math.max((d.total / max) * 70, d.total > 0 ? 4 : 2);
-    const segs = PNAMES.map(p => d[p] ? `<div class="chart-seg ${p}" style="height:${(d[p]/d.total)*h}px" title="${p}: ${d[p]}"></div>` : '').join('');
+    const segs = PNAMES.map(p => d[p] ? `<div class="chart-seg ${p}" style="height:${(d[p]/d.total)*h}px" title="${p}: ${d[p]}건"></div>` : '').join('');
     return `<div class="chart-col"><div class="chart-count">${d.total||''}</div><div class="chart-stack" style="height:${h}px">${segs}</div><div class="chart-label">${d.date.slice(5)}</div></div>`;
   }).join('');
   document.getElementById('chart-legend').innerHTML = PNAMES.map(p => `<span><span class="pi ${p}"></span>${p}</span>`).join('');
@@ -376,17 +379,17 @@ function renderWeeklyChart(chart) {
 
 function renderEngagement(eng) {
   const el = document.getElementById('engagement');
-  if (!eng?.length) { el.innerHTML = '<div class="empty">No data</div>'; return; }
+  if (!eng?.length) { el.innerHTML = '<div class="empty">데이터 없음</div>'; return; }
   el.innerHTML = eng.map(e => {
     const cls = e.reply_rate > 20 ? 'good' : e.reply_rate > 0 ? 'mid' : 'none';
     return `<div class="eng-row"><div style="display:flex;align-items:center"><span class="pi ${e.platform}"></span>${e.platform}</div>
-      <div class="eng-stats"><span style="color:var(--text2)">${e.comments_sent} sent</span><span style="color:var(--text2)">${e.replies_received} replies</span><span class="eng-rate ${cls}">${e.reply_rate}%</span></div></div>`;
+      <div class="eng-stats"><span style="color:var(--text2)">${e.comments_sent}건 발송</span><span style="color:var(--text2)">${e.replies_received}건 답글</span><span class="eng-rate ${cls}">${e.reply_rate}%</span></div></div>`;
   }).join('');
 }
 
 function renderPendingReplies(replies) {
   const el = document.getElementById('pending-replies');
-  if (!replies.length) { el.innerHTML = '<div class="empty">No pending replies</div>'; return; }
+  if (!replies.length) { el.innerHTML = '<div class="empty">미답변 답글 없음</div>'; return; }
   el.innerHTML = replies.slice(0,5).map(r => `<div class="reply-item">
     <div class="reply-header"><span class="reply-author"><span class="pi ${r.platform}"></span>@${r.author}</span><span class="reply-time">${timeAgo(r.detected_at)}</span></div>
     <div class="reply-body">${esc(stripHtml(r.body))}</div></div>`).join('');
@@ -394,26 +397,26 @@ function renderPendingReplies(replies) {
 
 function renderPendingApprovals(approvals, failed, stats) {
   const el = document.getElementById('pending-approvals');
-  if (!approvals.length && !(failed||[]).length) { el.innerHTML = '<div class="empty">No pending approvals</div>'; return; }
+  if (!approvals.length && !(failed||[]).length) { el.innerHTML = '<div class="empty">승인 대기 항목 없음</div>'; return; }
   el.innerHTML = approvals.slice(0,5).map(a => `<div class="approval-item">
-    <div class="approval-header"><span style="font-size:13px;font-weight:600">${esc(a.title)}</span><span style="color:var(--yellow);font-size:11px">pending</span></div>
-    <div class="approval-meta"><span class="pi ${a.platform}"></span>${a.platform} · ${a.action} · ${timeAgo(a.created_at)}</div>
+    <div class="approval-header"><span style="font-size:13px;font-weight:600">${esc(a.title)}</span><span style="color:var(--yellow);font-size:11px">대기</span></div>
+    <div class="approval-meta"><span class="pi ${a.platform}"></span>${a.platform} · ${ACTION_KO[a.action]||a.action} · ${timeAgo(a.created_at)}</div>
     <div class="btn-group" style="margin-top:8px">
-      <button class="btn success" onclick="approvalAction(${a.id},'approve')" style="padding:3px 10px;font-size:11px">Approve</button>
-      <button class="btn danger" onclick="approvalAction(${a.id},'reject')" style="padding:3px 10px;font-size:11px">Reject</button>
+      <button class="btn success" onclick="approvalAction(${a.id},'approve')" style="padding:3px 10px;font-size:11px">승인</button>
+      <button class="btn danger" onclick="approvalAction(${a.id},'reject')" style="padding:3px 10px;font-size:11px">거부</button>
     </div></div>`).join('') +
     (failed||[]).slice(0,3).map(a => `<div class="approval-item">
-    <div class="approval-header"><span style="font-size:13px;font-weight:600">${esc(a.title)}</span><span style="color:var(--red);font-size:11px">failed</span></div>
+    <div class="approval-header"><span style="font-size:13px;font-weight:600">${esc(a.title)}</span><span style="color:var(--red);font-size:11px">실패</span></div>
     <div style="font-size:11px;color:var(--red);margin-top:4px">${esc(trunc(a.last_error||'',80))}</div>
-    <button class="btn" onclick="approvalAction(${a.id},'retry')" style="margin-top:6px;padding:3px 10px;font-size:11px">Retry</button></div>`).join('');
+    <button class="btn" onclick="approvalAction(${a.id},'retry')" style="margin-top:6px;padding:3px 10px;font-size:11px">재시도</button></div>`).join('');
 }
 
 function renderTimeline(activity) {
   const el = document.getElementById('timeline');
-  if (!activity.length) { el.innerHTML = '<div class="empty">No activity</div>'; return; }
+  if (!activity.length) { el.innerHTML = '<div class="empty">활동 기록 없음</div>'; return; }
   el.innerHTML = activity.slice(0,15).map(a => `<div class="tl-item">
     <span class="tl-time">${timeAgo(a.timestamp)}</span><span class="pi ${a.platform}"></span>
-    <span class="tl-badge ${a.action}">${a.action}</span>
+    <span class="tl-badge ${a.action}">${ACTION_KO[a.action]||a.action}</span>
     <div class="tl-content">${a.content ? `<span style="color:var(--text)">${esc(trunc(a.content,60))}</span> ` : ''}${a.post_url ? `<a href="${a.post_url}" target="_blank">${trunc(a.post_url,40)}</a>` : ''}</div></div>`).join('');
 }
 
@@ -421,7 +424,7 @@ async function approvalAction(id, action) {
   try { await fetch(`/api/approvals/${id}/${action}`, {method:'POST'}); fetchSummary(); } catch(e) { alert(e); }
 }
 
-// ── Daemon ──
+// ── 에이전트 ──
 function showDaemonConfig() { showModal('modal-daemon'); }
 
 async function startDaemon() {
@@ -446,7 +449,7 @@ async function startDaemon() {
 }
 
 async function stopDaemon() {
-  if (!confirm('Stop daemon?')) return;
+  if (!confirm('에이전트를 정지할까요?')) return;
   await fetch('/api/daemon/stop', {method:'POST'});
   refreshDaemonStatus();
 }
@@ -463,21 +466,21 @@ async function refreshDaemonStatus() {
 
     if (d.running) {
       dot.className = 'daemon-dot running';
-      label.innerHTML = `Running <span class="daemon-pid">PID ${d.pid}</span>`;
+      label.innerHTML = `실행 중 <span class="daemon-pid">PID ${d.pid}</span>`;
       btnStart.disabled = true; btnStop.disabled = false;
       const c = d.config || {};
       configEl.innerHTML = `
-        <div>Topics: <strong>${esc(c.topics||'')}</strong></div>
-        <div>Platforms: ${esc(c.platforms||'all')}</div>
-        <div>Interval: ${c.interval||4}h · Max Actions: ${c.max_actions||3}</div>
-        ${c.campaign ? `<div>Campaign: <strong>${esc(c.campaign)}</strong></div>` : ''}
-        ${c.require_approval ? '<div style="color:var(--yellow)">Approval required</div>' : ''}
-        ${c.dry_run ? '<div style="color:var(--yellow)">Dry run mode</div>' : ''}`;
+        <div>토픽: <strong>${esc(c.topics||'')}</strong></div>
+        <div>플랫폼: ${esc(c.platforms||'전체')}</div>
+        <div>주기: ${c.interval||4}시간 · 최대 활동: ${c.max_actions||3}건</div>
+        ${c.campaign ? `<div>캠페인: <strong>${esc(c.campaign)}</strong></div>` : ''}
+        ${c.require_approval ? '<div style="color:var(--yellow)">승인 필요 모드</div>' : ''}
+        ${c.dry_run ? '<div style="color:var(--yellow)">테스트 모드 (실제 발행 안 함)</div>' : ''}`;
     } else {
       dot.className = 'daemon-dot stopped';
-      label.textContent = d.exit_code !== null && d.exit_code !== undefined ? `Stopped (exit ${d.exit_code})` : 'Stopped';
+      label.textContent = d.exit_code !== null && d.exit_code !== undefined ? `정지됨 (종료 코드 ${d.exit_code})` : '정지됨';
       btnStart.disabled = false; btnStop.disabled = true;
-      configEl.textContent = 'Not running';
+      configEl.textContent = '실행 중이 아닙니다';
     }
     refreshDaemonLogs();
   } catch(e) { console.error(e); }
@@ -488,7 +491,7 @@ async function refreshDaemonLogs() {
     const r = await fetch('/api/daemon/logs?limit=200');
     const d = await r.json();
     const el = document.getElementById('daemon-logs');
-    if (!d.logs.length) { el.innerHTML = '<div class="empty">No logs</div>'; return; }
+    if (!d.logs.length) { el.innerHTML = '<div class="empty">로그 없음</div>'; return; }
     el.innerHTML = d.logs.map(line => {
       const cls = line.includes('[err]') ? 'err' : line.includes('[sys]') ? 'sys' : '';
       return `<div class="log-line${cls ? ' '+cls : ''}">${esc(line)}</div>`;
@@ -497,7 +500,7 @@ async function refreshDaemonLogs() {
   } catch(e) { console.error(e); }
 }
 
-// ── Campaigns ──
+// ── 캠페인 ──
 let _selectedCampaign = null;
 
 function showCreateCampaign() { showModal('modal-campaign'); }
@@ -526,15 +529,15 @@ async function refreshCampaigns() {
     const r = await fetch('/api/campaigns');
     const d = await r.json();
     const el = document.getElementById('campaign-list');
-    if (!d.campaigns.length) { el.innerHTML = '<div class="empty">No campaigns yet. Create one!</div>'; return; }
+    if (!d.campaigns.length) { el.innerHTML = '<div class="empty">캠페인이 없습니다. 새 캠페인을 만들어보세요!</div>'; return; }
     el.innerHTML = d.campaigns.map(c => {
       const topics = JSON.parse(c.topics_json || '[]');
       const platforms = JSON.parse(c.platforms_json || '[]');
       return `<div class="camp-card${_selectedCampaign===c.id?' selected':''}" onclick="selectCampaign('${c.id}')">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <div class="camp-name">${esc(c.name)}</div><span class="badge ${c.status}">${c.status}</span>
+          <div class="camp-name">${esc(c.name)}</div><span class="badge ${c.status}">${STATUS_KO[c.status]||c.status}</span>
         </div>
-        <div class="camp-obj">${c.objective}${c.icp ? ' · '+esc(c.icp) : ''}</div>
+        <div class="camp-obj">${OBJ_KO[c.objective]||c.objective}${c.icp ? ' · '+esc(c.icp) : ''}</div>
         <div class="camp-tags">${topics.map(t=>`<span class="camp-tag">${esc(t)}</span>`).join('')}${platforms.map(p=>`<span class="camp-tag"><span class="pi ${p}"></span>${p}</span>`).join('')}</div>
         <div style="font-size:11px;color:var(--text2)">${c.start_date || ''} ${c.end_date ? '→ '+c.end_date : ''}</div>
       </div>`;
@@ -564,41 +567,53 @@ function renderCampaignReport(r) {
   const maxPlatform = Math.max(...Object.values(byPlatform), 1);
   const maxAction = Math.max(...Object.values(byAction), 1);
 
+  const KPI_KO = {comments:'댓글', posts:'포스트', conversions:'전환'};
+
   el.innerHTML = `<div class="card">
-    <h3>Report: ${esc(c.name || '')}</h3>
+    <h3>리포트: ${esc(c.name || '')}</h3>
     <div class="totals" style="margin-bottom:16px">
-      <div class="total-item"><div class="num">${r.total_actions}</div><div class="label">Actions</div></div>
-      <div class="total-item"><div class="num">${r.total_conversions}</div><div class="label">Conversions</div></div>
+      <div class="total-item"><div class="num">${r.total_actions}</div><div class="label">총 활동</div></div>
+      <div class="total-item"><div class="num">${r.total_conversions}</div><div class="label">전환</div></div>
     </div>
 
-    ${Object.keys(kpi).length ? `<div class="report-section"><h4>KPI Progress</h4>
+    ${Object.keys(kpi).length ? `<div class="report-section"><h4>KPI 달성률</h4>
       <div class="camp-kpi">${Object.entries(kpi).map(([k,v]) => {
         const pct = v.progress || 0;
         const cls = pct >= 80 ? 'on-track' : pct >= 40 ? 'behind' : 'critical';
-        return `<div class="kpi-item"><div class="kpi-num">${v.actual}</div><div class="kpi-label">${k}</div><div class="kpi-prog ${cls}">${pct}% of ${v.target}</div></div>`;
+        return `<div class="kpi-item"><div class="kpi-num">${v.actual}</div><div class="kpi-label">${KPI_KO[k]||k}</div><div class="kpi-prog ${cls}">${pct}% (목표 ${v.target})</div></div>`;
       }).join('')}</div></div>` : ''}
 
-    <div class="report-section"><h4>By Platform</h4>
+    <div class="report-section"><h4>플랫폼별</h4>
       ${Object.entries(byPlatform).map(([p,n]) => `<div class="report-bar-row">
         <span class="report-bar-label"><span class="pi ${p}"></span>${p}</span>
         <div class="report-bar"><div class="report-bar-fill" style="width:${(n/maxPlatform)*100}%"></div></div>
-        <span class="report-bar-val">${n}</span></div>`).join('')}
+        <span class="report-bar-val">${n}건</span></div>`).join('') || '<div class="empty">데이터 없음</div>'}
     </div>
 
-    <div class="report-section"><h4>By Action</h4>
+    <div class="report-section"><h4>활동 유형별</h4>
       ${Object.entries(byAction).map(([a,n]) => `<div class="report-bar-row">
-        <span class="report-bar-label"><span class="tl-badge ${a}" style="min-width:auto">${a}</span></span>
+        <span class="report-bar-label"><span class="tl-badge ${a}" style="min-width:auto">${ACTION_KO[a]||a}</span></span>
         <div class="report-bar"><div class="report-bar-fill" style="width:${(n/maxAction)*100}%"></div></div>
-        <span class="report-bar-val">${n}</span></div>`).join('')}
+        <span class="report-bar-val">${n}건</span></div>`).join('') || '<div class="empty">데이터 없음</div>'}
     </div>
 
-    ${r.total_conversions > 0 ? `<div class="report-section"><h4>Conversions by Type</h4>
-      ${Object.entries(r.conversions_by_type||{}).map(([t,n]) => `<div style="font-size:13px;margin-bottom:4px">${t}: <strong>${n}</strong></div>`).join('')}</div>` : ''}
+    ${r.total_conversions > 0 ? `<div class="report-section"><h4>전환 유형별</h4>
+      ${Object.entries(r.conversions_by_type||{}).map(([t,n]) => `<div style="font-size:13px;margin-bottom:4px">${t}: <strong>${n}건</strong></div>`).join('')}</div>` : ''}
   </div>`;
 }
 
 // ── Utils ──
-function timeAgo(s) { if(!s)return''; const m=Math.floor((Date.now()-new Date(s).getTime())/60000); if(m<1)return'now'; if(m<60)return m+'m'; const h=Math.floor(m/60); if(h<24)return h+'h'; return Math.floor(h/24)+'d'; }
+function timeAgo(s) {
+  if(!s) return '';
+  const m = Math.floor((Date.now()-new Date(s).getTime())/60000);
+  if(m<1) return '방금';
+  if(m<60) return m+'분 전';
+  const h = Math.floor(m/60);
+  if(h<24) return h+'시간 전';
+  const d = Math.floor(h/24);
+  if(d<7) return d+'일 전';
+  return Math.floor(d/7)+'주 전';
+}
 function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 function stripHtml(s) { const d=document.createElement('div'); d.innerHTML=s; return d.textContent||''; }
 function trunc(s,n) { return s&&s.length>n?s.slice(0,n)+'…':(s||''); }
