@@ -123,7 +123,26 @@ class AutonomousLoop:
         for opp in sorted_opps[: self.config.max_actions_per_cycle]:
             await self._process_opportunity(opp, result)
 
-        # 5. 예약 발행 처리
+        # 5. 실패한 승인 항목 자동 재시도
+        try:
+            failed = self.approval_queue.get_failed()
+            for item in failed:
+                try:
+                    retry_result = await self.approval_queue.retry_failed(item["id"], bus=self.bus)
+                    logger.info(
+                        "자동 재시도 성공: #%d → %s",
+                        item["id"],
+                        retry_result.get("queue_status", "unknown"),
+                    )
+                except Exception as e:
+                    if "cooldown" in str(e).lower() or "limit" in str(e).lower():
+                        logger.debug("재시도 대기: #%d — %s", item["id"], e)
+                        break  # 쿨다운이면 나머지도 안 됨
+                    logger.warning("재시도 실패: #%d — %s", item["id"], e)
+        except Exception as e:
+            logger.debug("승인 재시도 처리 에러: %s", e)
+
+        # 6. 예약 발행 처리
         try:
             from .scheduler import Scheduler
 
@@ -135,7 +154,7 @@ class AutonomousLoop:
             result.errors.append(f"scheduler 처리 실패: {e}")
             logger.error("scheduler 처리 실패", exc_info=True)
 
-        # 6. 답글 스캔 (track_replies 활성화 시)
+        # 7. 답글 스캔 (track_replies 활성화 시)
         if self.config.track_replies:
             try:
                 tracker = Tracker()

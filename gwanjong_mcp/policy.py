@@ -18,23 +18,31 @@ class PlatformLimit:
 
 
 DEFAULT_LIMITS: dict[str, PlatformLimit] = {
-    "devto": PlatformLimit("devto", max_comments_per_day=3, max_posts_per_day=1),
-    "bluesky": PlatformLimit("bluesky", max_comments_per_day=5, max_posts_per_day=2),
-    "twitter": PlatformLimit("twitter", max_comments_per_day=5, max_posts_per_day=2),
-    "reddit": PlatformLimit("reddit", max_comments_per_day=3, max_posts_per_day=0),
+    "devto": PlatformLimit(
+        "devto", max_comments_per_day=5, max_posts_per_day=1, min_interval_minutes=5
+    ),
+    "bluesky": PlatformLimit(
+        "bluesky", max_comments_per_day=8, max_posts_per_day=2, min_interval_minutes=5
+    ),
+    "twitter": PlatformLimit(
+        "twitter", max_comments_per_day=8, max_posts_per_day=2, min_interval_minutes=5
+    ),
+    "reddit": PlatformLimit(
+        "reddit", max_comments_per_day=5, max_posts_per_day=0, min_interval_minutes=5
+    ),
     "github_discussions": PlatformLimit(
         "github_discussions",
-        max_comments_per_day=4,
+        max_comments_per_day=6,
         max_posts_per_day=1,
         max_upvotes_per_day=10,
-        min_interval_minutes=45,
+        min_interval_minutes=5,
     ),
     "discourse": PlatformLimit(
         "discourse",
-        max_comments_per_day=4,
+        max_comments_per_day=6,
         max_posts_per_day=1,
         max_upvotes_per_day=10,
-        min_interval_minutes=45,
+        min_interval_minutes=5,
     ),
 }
 
