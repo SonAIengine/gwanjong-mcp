@@ -6,8 +6,8 @@ Reads SQLite directly to serve JSON APIs. No devhub/mcp-pipeline dependency.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
-import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -15,69 +15,38 @@ from pathlib import Path
 from aiohttp import web
 
 from .approval import ApprovalQueue
+from .policy import DEFAULT_LIMITS, PLATFORMS
+from .storage import (
+    DB_PATH as _DEFAULT_DB_PATH,
+)
+from .storage import (
+    ensure_actions_tables,
+    ensure_approval_queue_table,
+    ensure_campaigns_table,
+    ensure_conversions_table,
+    ensure_rate_log_table,
+    ensure_replies_table,
+    ensure_schedule_table,
+    ensure_scout_runs_table,
+    get_db,
+)
 
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
-DB_PATH = Path(os.getenv("GWANJONG_DB_PATH", str(Path.home() / ".gwanjong" / "memory.db")))
-
-DEFAULT_LIMITS = {
-    "devto": {"comments": 3, "posts": 1},
-    "bluesky": {"comments": 5, "posts": 2},
-    "twitter": {"comments": 5, "posts": 2},
-    "reddit": {"comments": 3, "posts": 0},
-}
-PLATFORMS = list(DEFAULT_LIMITS.keys())
-COOLDOWN_MINUTES = 30
+DB_PATH = Path(_DEFAULT_DB_PATH)
 
 
 def _get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    for ddl in [
-        """CREATE TABLE IF NOT EXISTS actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            opportunity_id TEXT, platform TEXT NOT NULL,
-            post_url TEXT, action TEXT NOT NULL,
-            content TEXT, topic TEXT, timestamp TEXT NOT NULL
-        )""",
-        """CREATE TABLE IF NOT EXISTS seen_posts (
-            post_url TEXT PRIMARY KEY, platform TEXT NOT NULL,
-            first_seen TEXT NOT NULL, acted INTEGER DEFAULT 0
-        )""",
-        """CREATE TABLE IF NOT EXISTS rate_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            platform TEXT NOT NULL, action TEXT NOT NULL,
-            timestamp TEXT NOT NULL, status TEXT DEFAULT 'ok'
-        )""",
-        """CREATE TABLE IF NOT EXISTS replies (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            comment_id TEXT NOT NULL UNIQUE, platform TEXT NOT NULL,
-            post_url TEXT NOT NULL, parent_comment_id TEXT,
-            author TEXT NOT NULL, body TEXT NOT NULL,
-            detected_at TEXT NOT NULL, responded INTEGER DEFAULT 0
-        )""",
-        """CREATE TABLE IF NOT EXISTS approval_queue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            topic TEXT NOT NULL,
-            platform TEXT NOT NULL,
-            action TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            opportunity_id TEXT NOT NULL,
-            post_id TEXT NOT NULL,
-            post_url TEXT NOT NULL,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            context_json TEXT NOT NULL,
-            opportunity_json TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            reviewed_at TEXT,
-            executed_at TEXT,
-            last_error TEXT
-        )""",
-    ]:
-        conn.execute(ddl)
-    conn.commit()
+    conn = get_db(DB_PATH)
+    ensure_actions_tables(conn)
+    ensure_rate_log_table(conn)
+    ensure_replies_table(conn)
+    ensure_scout_runs_table(conn)
+    ensure_approval_queue_table(conn)
+    ensure_campaigns_table(conn)
+    ensure_conversions_table(conn)
+    ensure_schedule_table(conn)
     return conn
 
 
@@ -144,15 +113,15 @@ def get_summary() -> dict:
                 try:
                     last_dt = datetime.fromisoformat(last_ts)
                     elapsed = (now - last_dt).total_seconds() / 60
-                    cooldown_remaining = max(0, COOLDOWN_MINUTES - elapsed)
+                    cooldown_remaining = max(0, limits.min_interval_minutes - elapsed)
                 except (ValueError, TypeError):
                     pass
 
             rate_limits.append(
                 {
                     "platform": p,
-                    "comments": {"used": c_used, "max": limits["comments"]},
-                    "posts": {"used": p_used, "max": limits["posts"]},
+                    "comments": {"used": c_used, "max": limits.max_comments_per_day},
+                    "posts": {"used": p_used, "max": limits.max_posts_per_day},
                     "last_action": last_ts,
                     "cooldown_remaining_min": round(cooldown_remaining, 1),
                     "in_cooldown": cooldown_remaining > 0,
@@ -166,6 +135,33 @@ def get_summary() -> dict:
                 "SELECT * FROM replies WHERE responded=0 ORDER BY detected_at DESC LIMIT 20"
             ).fetchall()
         ]
+        scout_runs = [
+            {
+                "topic": row["topic"],
+                "total_scanned": row["total_scanned"],
+                "opportunities_count": row["opportunities_count"],
+                "degraded_platforms": json.loads(row["degraded_platforms_json"]),
+                "platform_errors": json.loads(row["platform_errors_json"]),
+                "summary": row["summary"],
+                "created_at": row["created_at"],
+            }
+            for row in conn.execute(
+                """
+                SELECT topic, total_scanned, opportunities_count, degraded_platforms_json,
+                       platform_errors_json, summary, created_at
+                FROM scout_runs
+                ORDER BY id DESC
+                LIMIT 10
+                """
+            ).fetchall()
+        ]
+        scout_health = {
+            "total_runs": conn.execute("SELECT COUNT(*) FROM scout_runs").fetchone()[0],
+            "degraded_runs": conn.execute(
+                "SELECT COUNT(*) FROM scout_runs WHERE degraded_platforms_json != '[]'"
+            ).fetchone()[0],
+            "latest": scout_runs[0] if scout_runs else None,
+        }
 
         pending_approvals = [
             dict(r)
@@ -255,6 +251,8 @@ def get_summary() -> dict:
             "generated_at": now.isoformat(),
             "platforms": platforms,
             "rate_limits": rate_limits,
+            "scout_health": scout_health,
+            "recent_scout_runs": scout_runs,
             "pending_replies": pending_replies,
             "pending_approvals": pending_approvals,
             "failed_approvals": failed_approvals,
@@ -307,6 +305,52 @@ async def handle_api_approval_action(request: web.Request) -> web.Response:
     return web.json_response(result)
 
 
+async def handle_api_campaigns(request: web.Request) -> web.Response:
+    conn = _get_db()
+    try:
+        rows = conn.execute("SELECT * FROM campaigns ORDER BY created_at DESC").fetchall()
+        campaigns = [dict(r) for r in rows]
+        return web.json_response({"campaigns": campaigns, "count": len(campaigns)})
+    finally:
+        conn.close()
+
+
+async def handle_api_conversions(request: web.Request) -> web.Response:
+    campaign_id = request.query.get("campaign_id", "")
+    conn = _get_db()
+    try:
+        if campaign_id:
+            rows = conn.execute(
+                "SELECT * FROM conversions WHERE campaign_id = ? ORDER BY created_at DESC LIMIT 100",
+                (campaign_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM conversions ORDER BY created_at DESC LIMIT 100"
+            ).fetchall()
+        return web.json_response({"conversions": [dict(r) for r in rows], "count": len(rows)})
+    finally:
+        conn.close()
+
+
+async def handle_api_schedule(request: web.Request) -> web.Response:
+    campaign_id = request.query.get("campaign_id", "")
+    conn = _get_db()
+    try:
+        if campaign_id:
+            rows = conn.execute(
+                "SELECT * FROM schedule WHERE campaign_id = ? ORDER BY scheduled_at DESC LIMIT 100",
+                (campaign_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM schedule ORDER BY scheduled_at DESC LIMIT 100"
+            ).fetchall()
+        return web.json_response({"schedule": [dict(r) for r in rows], "count": len(rows)})
+    finally:
+        conn.close()
+
+
 async def handle_index(request: web.Request) -> web.Response:
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
@@ -318,6 +362,9 @@ def create_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/summary", handle_api_summary)
+    app.router.add_get("/api/campaigns", handle_api_campaigns)
+    app.router.add_get("/api/conversions", handle_api_conversions)
+    app.router.add_get("/api/schedule", handle_api_schedule)
     app.router.add_post("/api/approvals/{item_id:\\d+}/{action}", handle_api_approval_action)
     if STATIC_DIR.exists():
         app.router.add_static("/static/", STATIC_DIR)

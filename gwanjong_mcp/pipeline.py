@@ -107,6 +107,22 @@ def _score_relevance(post: Post, topic: str) -> float:
             score += 0.1
         if score > 0 and post.likes > 5:
             score += 0.1
+    elif platform == "github_discussions":
+        # GitHub Discussions: repo 문맥 + 기술 토론이 핵심
+        if score > 0 and post.comments_count > 8:
+            score += 0.15
+        elif score > 0 and post.comments_count > 2:
+            score += 0.1
+        if score > 0 and post.likes > 5:
+            score += 0.1
+    elif platform == "discourse":
+        # Discourse: 검색 가능한 포럼 답변, 중간 이상 길이의 토론이 유리
+        if score > 0 and post.comments_count > 10:
+            score += 0.15
+        elif score > 0 and post.comments_count > 3:
+            score += 0.1
+        if score > 0 and post.likes > 10:
+            score += 0.05
     else:
         # 기본 가중치
         if score > 0 and post.comments_count > 20:
@@ -145,6 +161,7 @@ async def scout(
     platforms: list[str] | None = None,
     limit: int = 5,
     bus: EventBus | None = None,
+    campaign_id: str = "",
 ) -> tuple[dict[str, Opportunity], dict[str, Any]]:
     """Scout: trending + search -> score -> return top N opportunities.
 
@@ -169,6 +186,10 @@ async def scout(
             hub.get_trending(limit=20),
             hub.search(topic, limit=20),
         )
+        platform_errors: dict[str, dict[str, Any]] = {}
+        for operation in ("get_trending", "search"):
+            for platform, error in hub.last_errors.get(operation, {}).items():
+                platform_errors.setdefault(platform, {})[operation] = error
 
     # 중복 제거 (URL 기준) + 스팸 필터
     seen: set[str] = set()
@@ -233,18 +254,22 @@ async def scout(
         "total_scanned": len(all_posts),
         "summary": f"{platforms_found}개 플랫폼에서 {len(compressed)}건의 기회 발견",
     }
+    if platform_errors:
+        degraded = sorted(platform_errors)
+        response["degraded_platforms"] = degraded
+        response["platform_errors"] = platform_errors
+        response["summary"] = f"{response['summary']} ({len(degraded)}개 플랫폼 일부 요청 실패)"
 
     if bus:
-        await bus.emit(
-            Event(
-                "scout.done",
-                {
-                    "topic": topic,
-                    "count": len(opportunities),
-                    "opportunities": opportunities,
-                },
-            )
-        )
+        event_data: dict[str, Any] = {
+            "topic": topic,
+            "count": len(opportunities),
+            "opportunities": opportunities,
+            "response": response,
+        }
+        if campaign_id:
+            event_data["campaign_id"] = campaign_id
+        await bus.emit(Event("scout.done", event_data))
 
     return opportunities, response
 
@@ -284,6 +309,7 @@ async def draft(
         platform=opportunity.platform,
         title=post.title,
         body_summary=post.body[:500] if post.body else "",
+        post_id=opportunity.post_id,
         top_comments=[c.body[:200] for c in comments[:5]],
         tone=tone,
         suggested_approach=approach,
@@ -361,25 +387,26 @@ async def strike(
     action: str,
     content: str,
     bus: EventBus | None = None,
+    campaign_id: str = "",
 ) -> tuple[ActionRecord, dict[str, Any]]:
     """Execute: write comment/post/crosspost.
 
     Returns:
         (action_record, compressed_response)
     """
+    target_post_id = context.post_id or context.opportunity_id
+
     # strike.before 이벤트 — safety 등 플러그인이 차단 가능
     if bus:
-        await bus.emit(
-            Event(
-                "strike.before",
-                {
-                    "platform": context.platform,
-                    "action": action,
-                    "content": content,
-                    "context": context,
-                },
-            )
-        )
+        before_data: dict[str, Any] = {
+            "platform": context.platform,
+            "action": action,
+            "content": content,
+            "context": context,
+        }
+        if campaign_id:
+            before_data["campaign_id"] = campaign_id
+        await bus.emit(Event("strike.before", before_data))
 
     cls = get_adapter_class(context.platform)
 
@@ -395,6 +422,7 @@ async def strike(
             platform=context.platform,
             url="",
             timestamp=datetime.now(timezone.utc).isoformat(),
+            post_id=target_post_id,
         ), {
             "error": f"{context.platform}에서 '{action}'은 허용되지 않음",
             "allowed_actions": allowed,
@@ -407,16 +435,15 @@ async def strike(
     if context.platform == "devto" and action == "comment":
         from .browser import devto_write_comment
 
-        # context.opportunity_id는 server.py에서 실제 post_id로 교체된 상태
-        article_url = f"https://dev.to/api/articles/{context.opportunity_id}"
+        article_url = f"https://dev.to/api/articles/{target_post_id}"
         # 실제 URL을 가져와서 사용
         adapter = cls()
         async with adapter:
-            post = await adapter.get_post(context.opportunity_id)
+            post = await adapter.get_post(target_post_id)
         article_url = post.url
 
         browser_result = await devto_write_comment(
-            article_id=context.opportunity_id,
+            article_id=target_post_id,
             article_url=article_url,
             body=content,
         )
@@ -426,6 +453,7 @@ async def strike(
             platform=context.platform,
             url=browser_result.get("url", ""),
             timestamp=datetime.now(timezone.utc).isoformat(),
+            post_id=target_post_id,
         )
         response: dict[str, Any] = {
             "status": "posted" if browser_result["status"] == "ok" else "failed",
@@ -435,23 +463,21 @@ async def strike(
         if browser_result["status"] != "ok":
             response["error"] = browser_result["message"]
         if bus:
-            await bus.emit(
-                Event(
-                    "strike.after",
-                    {
-                        "record": record,
-                        "response": response,
-                        "content": content,
-                    },
-                )
-            )
+            after_data: dict[str, Any] = {
+                "record": record,
+                "response": response,
+                "content": content,
+            }
+            if campaign_id:
+                after_data["campaign_id"] = campaign_id
+            await bus.emit(Event("strike.after", after_data))
         return record, response
 
     adapter = cls()
     async with adapter:
         if action == "comment":
             result = await adapter.write_comment(
-                context.opportunity_id,  # server.py에서 실제 post_id로 교체
+                target_post_id,
                 content,
             )
         elif action == "post":
@@ -460,7 +486,7 @@ async def strike(
                 body=content,
             )
         elif action == "upvote":
-            result = await adapter.upvote(context.opportunity_id)
+            result = await adapter.upvote(target_post_id)
         else:
             return ActionRecord(
                 opportunity_id=context.opportunity_id,
@@ -468,6 +494,7 @@ async def strike(
                 platform=context.platform,
                 url="",
                 timestamp=datetime.now(timezone.utc).isoformat(),
+                post_id=target_post_id,
             ), {
                 "error": f"지원하지 않는 action: {action}",
                 "supported": ["comment", "post", "upvote"],
@@ -479,6 +506,7 @@ async def strike(
         platform=context.platform,
         url=result.url if result.success else "",
         timestamp=datetime.now(timezone.utc).isoformat(),
+        post_id=target_post_id,
     )
 
     response: dict[str, Any] = {
@@ -490,16 +518,14 @@ async def strike(
         response["error"] = result.error
 
     if bus:
-        await bus.emit(
-            Event(
-                "strike.after",
-                {
-                    "record": record,
-                    "response": response,
-                    "content": content,
-                },
-            )
-        )
+        after_data2: dict[str, Any] = {
+            "record": record,
+            "response": response,
+            "content": content,
+        }
+        if campaign_id:
+            after_data2["campaign_id"] = campaign_id
+        await bus.emit(Event("strike.after", after_data2))
 
     return record, response
 
@@ -533,6 +559,8 @@ PLATFORM_ACTIONS: dict[str, list[str]] = {
     "bluesky": ["comment", "post"],  # 리플 + 포스트 (네트워킹)
     "twitter": ["comment", "post"],  # 리플 (visibility) + 트윗 (홍보)
     "reddit": ["comment", "upvote"],  # 댓글만 (자기홍보 금지, post 차단)
+    "github_discussions": ["comment", "post", "upvote"],  # OSS/repo discussion 참여
+    "discourse": ["comment", "post", "upvote"],  # 포럼 답변 + 독립 topic 작성
 }
 
 
@@ -560,6 +588,18 @@ def _suggest_approach(opp: Opportunity, comment_count: int) -> str:
     if platform == "reddit":
         return "comment"  # Reddit은 무조건 댓글. post는 downvote 폭격.
 
+    if platform == "github_discussions":
+        if comment_count > 0:
+            return "comment"  # 기존 논의에 구체적으로 붙는 편이 안전
+        return "post"  # 논의가 비어 있으면 새 discussion도 가능
+
+    if platform == "discourse":
+        if comment_count > 8:
+            return "comment"  # 이미 흐름이 있으면 답변 참여
+        if comment_count < 2:
+            return "post"  # 조용한 포럼이면 독립 topic 가치도 있음
+        return "comment"
+
     return "comment"
 
 
@@ -586,6 +626,16 @@ def _suggest_actions(opp: Opportunity, comment_count: int) -> list[str]:
     if platform == "reddit":
         return ["comment", "upvote"]  # post 절대 금지
 
+    if platform == "github_discussions":
+        if comment_count > 0:
+            return ["comment", "upvote"]
+        return ["post", "comment"]
+
+    if platform == "discourse":
+        if comment_count > 8:
+            return ["comment", "upvote"]
+        return ["comment", "post"]
+
     return ["comment"]
 
 
@@ -606,6 +656,14 @@ def _check_avoid(opp: Opportunity) -> list[str]:
         avoid.append("No direct links to your project unless asked")
         avoid.append("Read subreddit rules before commenting")
         avoid.append("Be blunt and helpful, not polished")
+    elif opp.platform == "github_discussions":
+        avoid.append("Don't drop generic product promo into a repo discussion")
+        avoid.append("Reference the exact repo context, API surface, or maintainer concern")
+        avoid.append("If you're unsure, ask a concrete technical question instead of pitching")
+    elif opp.platform == "discourse":
+        avoid.append("Read the category norms before posting a new topic")
+        avoid.append("Don't cross-post the same pitch across multiple forum topics")
+        avoid.append("Prefer a direct answer with evidence over polished marketing language")
     avoid.extend(WRITING_AVOID)
     return avoid
 
@@ -658,6 +716,12 @@ def _build_comment_guide(opp: Opportunity, tone: str) -> str:
         guide += "- Twitter is punchy. One sharp observation > a polished paragraph.\n"
     elif opp.platform == "bluesky":
         guide += "- Bluesky is conversational. Think quote-tweet energy.\n"
+    elif opp.platform == "github_discussions":
+        guide += (
+            "- GitHub Discussions is repo-context heavy. Mention exact APIs, files, or tradeoffs.\n"
+        )
+    elif opp.platform == "discourse":
+        guide += "- Discourse rewards clear answers. A concrete fix beats a clever opener.\n"
 
     return guide
 
@@ -714,6 +778,22 @@ def _build_post_guide(opp: Opportunity) -> str:
             "- Code blocks expected. Quick-start that actually runs.\n"
             "- Teaching a friend, not writing documentation.\n"
             "- Tags: 3-4 relevant ones for discovery.\n"
+        )
+    elif opp.platform == "github_discussions":
+        guide += (
+            "\nGITHUB DISCUSSIONS STYLE:\n"
+            "- Only start a new discussion when it is repo-specific and actionable.\n"
+            "- Put the concrete problem in the title, not vague thought leadership.\n"
+            "- Include repro context, expected behavior, and why this matters to maintainers/users.\n"
+            "- Keep the tone collaborative. You're contributing to the project's shared backlog.\n"
+        )
+    elif opp.platform == "discourse":
+        guide += (
+            "\nDISCOURSE STYLE:\n"
+            "- Use a searchable title and front-load the actual problem.\n"
+            "- A short summary plus numbered repro steps is acceptable here.\n"
+            "- Link out only when the forum post still stands on its own.\n"
+            "- Forums remember spam. Optimize for usefulness, not visibility.\n"
         )
 
     return guide

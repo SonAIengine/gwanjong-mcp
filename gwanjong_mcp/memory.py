@@ -2,45 +2,23 @@
 
 from __future__ import annotations
 
+import json
 import logging
-import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .events import Event, EventBus
+from .storage import DB_PATH, ensure_actions_tables, ensure_scout_runs_table, get_db
 
 logger = logging.getLogger(__name__)
-
-DB_PATH = Path(os.getenv("GWANJONG_DB_PATH", str(Path.home() / ".gwanjong" / "memory.db")))
 
 
 def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
     """SQLite connection. Creates tables if they don't exist."""
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            opportunity_id TEXT,
-            platform TEXT NOT NULL,
-            post_url TEXT,
-            action TEXT NOT NULL,
-            content TEXT,
-            topic TEXT,
-            timestamp TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS seen_posts (
-            post_url TEXT PRIMARY KEY,
-            platform TEXT NOT NULL,
-            first_seen TEXT NOT NULL,
-            acted INTEGER DEFAULT 0
-        );
-    """)
-    conn.commit()
+    conn = get_db(db_path)
+    ensure_actions_tables(conn)
     return conn
 
 
@@ -59,7 +37,10 @@ class Memory:
     async def _on_scout_done(self, event: Event) -> None:
         """Record discovered posts in seen_posts when scout completes."""
         opportunities = event.data.get("opportunities", {})
+        response = event.data.get("response", {})
+        topic = event.data.get("topic", "")
         conn = _get_db(self._db_path)
+        ensure_scout_runs_table(conn)
         try:
             now = datetime.now(timezone.utc).isoformat()
             for opp in opportunities.values():
@@ -70,6 +51,23 @@ class Memory:
                         "INSERT OR IGNORE INTO seen_posts (post_url, platform, first_seen) VALUES (?, ?, ?)",
                         (url, platform, now),
                     )
+            conn.execute(
+                """
+                INSERT INTO scout_runs (
+                    topic, total_scanned, opportunities_count, degraded_platforms_json,
+                    platform_errors_json, summary, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    topic,
+                    int(response.get("total_scanned", 0)),
+                    len(opportunities),
+                    json.dumps(response.get("degraded_platforms", []), ensure_ascii=True),
+                    json.dumps(response.get("platform_errors", {}), ensure_ascii=True),
+                    str(response.get("summary", "")),
+                    now,
+                ),
+            )
             conn.commit()
         finally:
             conn.close()
@@ -92,15 +90,28 @@ class Memory:
                 if hasattr(record, "opportunity_id")
                 else record.get("opportunity_id", "")
             )
+            post_id = record.post_id if hasattr(record, "post_id") else record.get("post_id", "")
             timestamp = (
                 record.timestamp if hasattr(record, "timestamp") else record.get("timestamp", "")
             )
 
             content = event.data.get("content", "")
+            campaign_id = event.data.get("campaign_id", "")
+            utm_url = event.data.get("utm_url", "")
 
             conn.execute(
-                "INSERT INTO actions (opportunity_id, platform, post_url, action, content, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                (opp_id, platform, url, action, content, timestamp),
+                "INSERT INTO actions (opportunity_id, post_id, platform, post_url, action, content, timestamp, campaign_id, utm_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    opp_id,
+                    post_id,
+                    platform,
+                    url,
+                    action,
+                    content,
+                    timestamp,
+                    campaign_id or None,
+                    utm_url or None,
+                ),
             )
             # seen_posts에 활동 표시
             if url:

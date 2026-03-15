@@ -28,6 +28,8 @@ class CycleConfig:
     min_relevance: float = 0.3
     require_approval: bool = False
     track_replies: bool = True
+    dry_run: bool = False
+    campaign_id: str = ""
 
 
 @dataclass
@@ -81,6 +83,7 @@ class AutonomousLoop:
                 platforms=self.config.platforms,
                 limit=self.config.scout_limit,
                 bus=self.bus,
+                campaign_id=self.config.campaign_id,
             )
         except Exception as e:
             result.errors.append(f"scout 실패: {e}")
@@ -120,7 +123,19 @@ class AutonomousLoop:
         for opp in sorted_opps[: self.config.max_actions_per_cycle]:
             await self._process_opportunity(opp, result)
 
-        # 5. 답글 스캔 (track_replies 활성화 시)
+        # 5. 예약 발행 처리
+        try:
+            from .scheduler import Scheduler
+
+            scheduler = Scheduler()
+            due_results = await scheduler.process_due(bus=self.bus)
+            if due_results:
+                logger.info("예약 발행 %d건 처리", len(due_results))
+        except Exception as e:
+            result.errors.append(f"scheduler 처리 실패: {e}")
+            logger.error("scheduler 처리 실패", exc_info=True)
+
+        # 6. 답글 스캔 (track_replies 활성화 시)
         if self.config.track_replies:
             try:
                 tracker = Tracker()
@@ -156,10 +171,14 @@ class AutonomousLoop:
         """Process a single opportunity: draft -> generate -> strike."""
         try:
             # draft
-            ctx, draft_response = await pipeline.draft(opp, bus=self.bus)
+            ctx, _draft_response = await pipeline.draft(opp, bus=self.bus)
         except Exception as e:
             result.errors.append(f"draft 실패 ({opp.id}): {e}")
             logger.error("draft 실패: %s", opp.id, exc_info=True)
+            return
+
+        if self.config.dry_run:
+            logger.info("Dry-run: strike 생략 (%s %s)", opp.platform, opp.title[:50])
             return
 
         # generate
@@ -198,13 +217,12 @@ class AutonomousLoop:
         # strike
         result.actions_attempted += 1
         try:
-            # context의 opportunity_id를 실제 post_id로 교체
-            ctx.opportunity_id = opp.post_id
             record, response = await pipeline.strike(
                 ctx,
                 ctx.suggested_approach,
                 content,
                 bus=self.bus,
+                campaign_id=self.config.campaign_id,
             )
             if response.get("status") == "posted":
                 result.actions_succeeded += 1

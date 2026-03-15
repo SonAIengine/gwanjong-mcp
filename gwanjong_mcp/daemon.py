@@ -16,6 +16,8 @@ from .llm import CommentGenerator
 from .memory import Memory
 from .safety import Safety
 
+logger = logging.getLogger(__name__)
+
 # Load .env (configurable via GWANJONG_ENV_PATH)
 _env_path = Path(os.getenv("GWANJONG_ENV_PATH", str(Path.home() / ".gwanjong" / ".env")))
 if _env_path.exists():
@@ -77,6 +79,17 @@ def main() -> None:
         help="scout + draft only, skip strike",
     )
     parser.add_argument(
+        "--campaign",
+        type=str,
+        default=None,
+        help="campaign ID to operate under",
+    )
+    parser.add_argument(
+        "--auto-plan",
+        action="store_true",
+        help="auto-generate weekly plan on first cycle",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -98,7 +111,9 @@ def main() -> None:
         topics=topics,
         max_actions_per_cycle=args.max_actions,
         platforms=platforms,
-        require_approval=args.require_approval or args.dry_run,
+        require_approval=args.require_approval,
+        dry_run=args.dry_run,
+        campaign_id=args.campaign or "",
     )
 
     # EventBus + 플러그인 조립
@@ -106,16 +121,37 @@ def main() -> None:
     Safety().attach(bus)
     Memory().attach(bus)
 
+    from .conversion import ConversionTracker
+
+    ConversionTracker().attach(bus)
+
     llm = CommentGenerator(model=args.model)
 
     loop = AutonomousLoop(bus=bus, llm=llm, config=config)
 
-    asyncio.run(
-        loop.run_daemon(
-            interval_hours=args.interval,
-            max_cycles=args.max_cycles,
+    # auto-plan 처리
+    if args.auto_plan and args.campaign:
+        from .strategy import StrategyEngine
+
+        async def _run_with_plan() -> None:
+            strategy = StrategyEngine(llm=llm)
+            plan = await strategy.generate_weekly_plan(args.campaign)
+            if "error" not in plan:
+                strategy.auto_approve_low_risk(plan)
+                logger.info("Auto-plan generated for %s", args.campaign)
+            await loop.run_daemon(
+                interval_hours=args.interval,
+                max_cycles=args.max_cycles,
+            )
+
+        asyncio.run(_run_with_plan())
+    else:
+        asyncio.run(
+            loop.run_daemon(
+                interval_hours=args.interval,
+                max_cycles=args.max_cycles,
+            )
         )
-    )
 
 
 if __name__ == "__main__":
