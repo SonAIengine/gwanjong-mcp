@@ -106,7 +106,7 @@ class Safety:
 
         # 2. 콘텐츠 검증 (upvote는 콘텐츠 없음)
         if action != "upvote" and content:
-            ok, violations = self.validate_content(content, platform)
+            ok, violations = self.validate_content(content, platform, action=action)
             if not ok:
                 logger.warning("Content guard: %s", violations)
                 return False
@@ -200,30 +200,36 @@ class Safety:
 
     # ── Content Guard ──
 
-    def validate_content(self, content: str, platform: str = "") -> tuple[bool, list[str]]:
+    def validate_content(
+        self, content: str, platform: str = "", *, action: str = "comment"
+    ) -> tuple[bool, list[str]]:
         """Validate content safety. Returns (passed, list of violations)."""
         violations: list[str] = []
         content_lower = content.lower()
+        is_post = action == "post"
 
-        # 1. AI 단어 탐지
-        found_ai = [w for w in AI_WORDS if w in content_lower]
-        if found_ai:
-            violations.append(f"AI pattern words: {', '.join(found_ai)}")
+        # 1. AI 단어 탐지 (post는 면제 — 글에서 기술 용어로 쓸 수 있음)
+        if not is_post:
+            found_ai = [w for w in AI_WORDS if w in content_lower]
+            if found_ai:
+                violations.append(f"AI pattern words: {', '.join(found_ai)}")
 
-        # 2. AI 오프너 탐지
-        for pattern in AI_OPENERS:
-            if re.search(pattern, content_lower):
-                violations.append(f"AI opener pattern: {pattern}")
-                break
+        # 2. AI 오프너 탐지 (post는 면제 — 글 도입부 자유)
+        if not is_post:
+            for pattern in AI_OPENERS:
+                if re.search(pattern, content_lower):
+                    violations.append(f"AI opener pattern: {pattern}")
+                    break
 
-        # 3. 칭찬→경험→질문 공식 탐지
-        has_praise = any(w in content_lower for w in ("great", "amazing", "love", "awesome"))
-        has_experience = any(
-            w in content_lower for w in ("in my experience", "i've found", "i tried")
-        )
-        has_question = content.rstrip().endswith("?")
-        if has_praise and has_experience and has_question:
-            violations.append("Formulaic structure: praise→experience→question")
+        # 3. 칭찬→경험→질문 공식 탐지 (comment 전용)
+        if not is_post:
+            has_praise = any(w in content_lower for w in ("great", "amazing", "love", "awesome"))
+            has_experience = any(
+                w in content_lower for w in ("in my experience", "i've found", "i tried")
+            )
+            has_question = content.rstrip().endswith("?")
+            if has_praise and has_experience and has_question:
+                violations.append("Formulaic structure: praise→experience→question")
 
         # 4. 길이 검증
         max_lengths = {"twitter": 280, "bluesky": 300}
@@ -233,8 +239,11 @@ class Safety:
             )
 
         # 5. 자기 홍보 비율 (URL 개수)
+        # post: URL 여러 개는 자연스러움 (10개까지 허용)
+        # comment: URL 1개 초과 시 경고
         url_count = len(re.findall(r"https?://", content))
-        if url_count > 1:
+        url_limit = 10 if is_post else 1
+        if url_count > url_limit:
             violations.append(f"{url_count} URLs detected — possible self-promotion")
 
         return len(violations) == 0, violations
