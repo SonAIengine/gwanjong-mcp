@@ -6,15 +6,19 @@ Reads SQLite directly to serve JSON APIs. No devhub/mcp-pipeline dependency.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
+import os
 import sqlite3
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from aiohttp import web
 
 from .approval import ApprovalQueue
+from .campaign import CampaignManager
 from .policy import DEFAULT_LIMITS, PLATFORMS
 from .storage import (
     DB_PATH as _DEFAULT_DB_PATH,
@@ -35,6 +39,112 @@ logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 DB_PATH = Path(_DEFAULT_DB_PATH)
+
+# ── Daemon process manager ──
+
+_daemon_proc: asyncio.subprocess.Process | None = None
+_daemon_log: list[str] = []
+_daemon_config: dict = {}
+_DAEMON_LOG_MAX = 200
+
+
+async def _read_daemon_output(stream: asyncio.StreamReader, label: str) -> None:
+    """Read daemon stdout/stderr and append to log buffer."""
+    global _daemon_log
+    while True:
+        line = await stream.readline()
+        if not line:
+            break
+        text = line.decode("utf-8", errors="replace").rstrip()
+        _daemon_log.append(f"[{label}] {text}")
+        if len(_daemon_log) > _DAEMON_LOG_MAX:
+            _daemon_log = _daemon_log[-_DAEMON_LOG_MAX:]
+        logger.debug("daemon %s: %s", label, text)
+
+
+async def daemon_start(config: dict) -> dict:
+    """Start gwanjong-daemon as a subprocess."""
+    global _daemon_proc, _daemon_config, _daemon_log
+
+    if _daemon_proc and _daemon_proc.returncode is None:
+        return {"error": "daemon already running", "pid": _daemon_proc.pid}
+
+    cmd = [sys.executable, "-m", "gwanjong_mcp.daemon"]
+    topics = config.get("topics", "MCP")
+    cmd.extend(["--topics", topics])
+
+    if config.get("platforms"):
+        cmd.extend(["--platforms", config["platforms"]])
+    if config.get("interval"):
+        cmd.extend(["--interval", str(config["interval"])])
+    if config.get("max_actions"):
+        cmd.extend(["--max-actions", str(config["max_actions"])])
+    if config.get("max_cycles"):
+        cmd.extend(["--max-cycles", str(config["max_cycles"])])
+    if config.get("campaign"):
+        cmd.extend(["--campaign", config["campaign"]])
+    if config.get("require_approval"):
+        cmd.append("--require-approval")
+    if config.get("dry_run"):
+        cmd.append("--dry-run")
+    if config.get("auto_plan"):
+        cmd.append("--auto-plan")
+
+    _daemon_log = [f"[sys] Starting: {' '.join(cmd)}"]
+    _daemon_config = config
+
+    _daemon_proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+    )
+
+    # Background tasks to read output
+    asyncio.create_task(_read_daemon_output(_daemon_proc.stdout, "out"))
+    asyncio.create_task(_read_daemon_output(_daemon_proc.stderr, "err"))
+
+    _daemon_log.append(f"[sys] Daemon started (PID {_daemon_proc.pid})")
+    logger.info("Daemon started: PID %d, cmd=%s", _daemon_proc.pid, cmd)
+    return {"status": "started", "pid": _daemon_proc.pid}
+
+
+async def daemon_stop() -> dict:
+    """Stop the running daemon subprocess."""
+    global _daemon_proc
+    if not _daemon_proc or _daemon_proc.returncode is not None:
+        return {"status": "not_running"}
+
+    pid = _daemon_proc.pid
+    _daemon_proc.terminate()
+    try:
+        await asyncio.wait_for(_daemon_proc.wait(), timeout=10)
+    except asyncio.TimeoutError:
+        _daemon_proc.kill()
+        await _daemon_proc.wait()
+
+    _daemon_log.append(f"[sys] Daemon stopped (PID {pid})")
+    logger.info("Daemon stopped: PID %d", pid)
+    _daemon_proc = None
+    return {"status": "stopped", "pid": pid}
+
+
+def daemon_status() -> dict:
+    """Get daemon process status."""
+    if _daemon_proc and _daemon_proc.returncode is None:
+        return {
+            "running": True,
+            "pid": _daemon_proc.pid,
+            "config": _daemon_config,
+            "log_lines": len(_daemon_log),
+        }
+    return {
+        "running": False,
+        "pid": None,
+        "config": _daemon_config,
+        "exit_code": _daemon_proc.returncode if _daemon_proc else None,
+        "log_lines": len(_daemon_log),
+    }
 
 
 def _get_db() -> sqlite3.Connection:
@@ -351,6 +461,77 @@ async def handle_api_schedule(request: web.Request) -> web.Response:
         conn.close()
 
 
+# ── Daemon API handlers ──
+
+
+async def handle_api_daemon_start(request: web.Request) -> web.Response:
+    try:
+        config = await request.json()
+    except Exception:
+        config = {}
+    result = await daemon_start(config)
+    status = 200 if "error" not in result else 409
+    return web.json_response(result, status=status)
+
+
+async def handle_api_daemon_stop(request: web.Request) -> web.Response:
+    result = await daemon_stop()
+    return web.json_response(result)
+
+
+async def handle_api_daemon_status(request: web.Request) -> web.Response:
+    return web.json_response(daemon_status())
+
+
+async def handle_api_daemon_logs(request: web.Request) -> web.Response:
+    offset = int(request.query.get("offset", "0"))
+    limit = int(request.query.get("limit", "100"))
+    logs = _daemon_log[offset : offset + limit]
+    return web.json_response({"logs": logs, "total": len(_daemon_log), "offset": offset})
+
+
+# ── Campaign API handlers ──
+
+
+async def handle_api_campaign_report(request: web.Request) -> web.Response:
+    campaign_id = request.match_info["campaign_id"]
+    mgr = CampaignManager(db_path=DB_PATH)
+    report = mgr.get_report(campaign_id)
+    return web.json_response(report)
+
+
+async def handle_api_campaign_create(request: web.Request) -> web.Response:
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+    if "name" not in data:
+        return web.json_response({"error": "name 필수"}, status=400)
+    mgr = CampaignManager(db_path=DB_PATH)
+    camp = mgr.create(data)
+    return web.json_response(
+        {
+            "id": camp.id,
+            "name": camp.name,
+            "status": camp.status,
+            "objective": camp.objective,
+        }
+    )
+
+
+async def handle_api_campaign_update(request: web.Request) -> web.Response:
+    campaign_id = request.match_info["campaign_id"]
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+    mgr = CampaignManager(db_path=DB_PATH)
+    camp = mgr.update(campaign_id, data)
+    if not camp:
+        return web.json_response({"error": f"캠페인 '{campaign_id}' 없음"}, status=404)
+    return web.json_response({"id": camp.id, "name": camp.name, "status": camp.status})
+
+
 async def handle_index(request: web.Request) -> web.Response:
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
@@ -362,7 +543,17 @@ def create_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/summary", handle_api_summary)
+    # Daemon control
+    app.router.add_post("/api/daemon/start", handle_api_daemon_start)
+    app.router.add_post("/api/daemon/stop", handle_api_daemon_stop)
+    app.router.add_get("/api/daemon/status", handle_api_daemon_status)
+    app.router.add_get("/api/daemon/logs", handle_api_daemon_logs)
+    # Campaigns
     app.router.add_get("/api/campaigns", handle_api_campaigns)
+    app.router.add_post("/api/campaigns", handle_api_campaign_create)
+    app.router.add_get("/api/campaigns/{campaign_id}/report", handle_api_campaign_report)
+    app.router.add_patch("/api/campaigns/{campaign_id}", handle_api_campaign_update)
+    # Data
     app.router.add_get("/api/conversions", handle_api_conversions)
     app.router.add_get("/api/schedule", handle_api_schedule)
     app.router.add_post("/api/approvals/{item_id:\\d+}/{action}", handle_api_approval_action)
