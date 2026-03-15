@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
 from devhub.types import Post
-from gwanjong_mcp.pipeline import _score_relevance, _analyze_tone, _generate_reason
+
+from gwanjong_mcp import pipeline
+from gwanjong_mcp.pipeline import _analyze_tone, _generate_reason, _score_relevance
 
 
 def _make_post(**kwargs) -> Post:
@@ -73,3 +78,45 @@ def test_generate_reason():
     reason = _generate_reason(post, "MCP", 0.8)
     assert "주제 직접 관련" in reason
     assert "활발한 토론" in reason
+
+
+@pytest.mark.asyncio
+async def test_scout_surfaces_degraded_platforms(monkeypatch: pytest.MonkeyPatch):
+    class FakeHub:
+        def __init__(self) -> None:
+            self.adapters = [
+                SimpleNamespace(platform="devto"),
+                SimpleNamespace(platform="twitter"),
+            ]
+            self.last_errors: dict[str, dict[str, str]] = {}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get_trending(self, limit: int = 20):
+            self.last_errors["get_trending"] = {"twitter": "API down"}
+            return [
+                _make_post(
+                    id="devto-1",
+                    platform="devto",
+                    title="Best MCP server patterns",
+                    url="https://example.com/devto-1",
+                    comments_count=10,
+                    likes=20,
+                )
+            ]
+
+        async def search(self, query: str, limit: int = 20):
+            self.last_errors["search"] = {}
+            return []
+
+    monkeypatch.setattr("gwanjong_mcp.pipeline.Hub.from_env", lambda: FakeHub())
+
+    opportunities, response = await pipeline.scout("MCP server", limit=5)
+
+    assert len(opportunities) == 1
+    assert response["degraded_platforms"] == ["twitter"]
+    assert response["platform_errors"]["twitter"]["get_trending"] == "API down"

@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import sqlite3
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 from .events import Event, EventBus
+from .policy import DEFAULT_LIMITS, PlatformLimit
+from .storage import DB_PATH, ensure_rate_log_table, get_db
 
 logger = logging.getLogger(__name__)
-
-DB_PATH = Path(os.getenv("GWANJONG_DB_PATH", str(Path.home() / ".gwanjong" / "memory.db")))
 
 # AI가 흔히 쓰는 패턴
 AI_WORDS = {
@@ -37,41 +35,10 @@ AI_OPENERS = [
 ]
 
 
-@dataclass
-class PlatformLimit:
-    """Per-platform activity limits."""
-
-    platform: str
-    max_comments_per_day: int = 3
-    max_posts_per_day: int = 1
-    max_upvotes_per_day: int = 5
-    min_interval_minutes: int = 30
-    cooldown_after_error_minutes: int = 60
-
-
-# 기본 제한 (GUIDE.md 기반)
-DEFAULT_LIMITS: dict[str, PlatformLimit] = {
-    "devto": PlatformLimit("devto", max_comments_per_day=3, max_posts_per_day=1),
-    "bluesky": PlatformLimit("bluesky", max_comments_per_day=5, max_posts_per_day=2),
-    "twitter": PlatformLimit("twitter", max_comments_per_day=5, max_posts_per_day=2),
-    "reddit": PlatformLimit("reddit", max_comments_per_day=3, max_posts_per_day=0),
-}
-
-
 def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
     """Get SQLite connection. Creates table if not exists."""
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS rate_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            platform TEXT NOT NULL,
-            action TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            status TEXT DEFAULT 'ok'
-        )
-    """)
-    conn.commit()
+    conn = get_db(db_path)
+    ensure_rate_log_table(conn)
     return conn
 
 
@@ -92,7 +59,7 @@ class Safety:
         bus.on("strike.after", self._on_strike_after)
         logger.info("Safety attached to EventBus")
 
-    async def _on_strike_before(self, event: Event) -> bool | None:
+    async def _on_strike_before(self, event: Event) -> str | None:
         """Validate before strike. Returns False to block."""
         platform = event.data.get("platform", "")
         action = event.data.get("action", "")
@@ -102,14 +69,14 @@ class Safety:
         ok, reason = self.check_rate_limit(platform, action)
         if not ok:
             logger.warning("Rate limit: %s", reason)
-            return False
+            return reason
 
         # 2. 콘텐츠 검증 (upvote는 콘텐츠 없음)
         if action != "upvote" and content:
             ok, violations = self.validate_content(content, platform, action=action)
             if not ok:
                 logger.warning("Content guard: %s", violations)
-                return False
+                return "; ".join(violations)
 
         return None  # 통과
 

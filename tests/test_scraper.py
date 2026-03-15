@@ -6,8 +6,8 @@ from gwanjong_mcp.scraper import (
     ScrapedTweet,
     _extract_tweet_id,
     _parse_metric,
-    get_tweet,
     get_profile_tweets,
+    get_tweet,
 )
 
 

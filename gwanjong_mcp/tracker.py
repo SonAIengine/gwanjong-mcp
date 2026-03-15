@@ -12,27 +12,10 @@ from typing import Any
 from devhub.registry import get_adapter_class
 
 from .events import Event, EventBus
-from .memory import DB_PATH, _get_db
+from .memory import _get_db
+from .storage import DB_PATH, ensure_replies_table
 
 logger = logging.getLogger(__name__)
-
-
-def _ensure_replies_table(conn: sqlite3.Connection) -> None:
-    """Create the replies table if it does not exist."""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS replies (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            comment_id TEXT NOT NULL UNIQUE,
-            platform TEXT NOT NULL,
-            post_url TEXT NOT NULL,
-            parent_comment_id TEXT,
-            author TEXT NOT NULL,
-            body TEXT NOT NULL,
-            detected_at TEXT NOT NULL,
-            responded INTEGER DEFAULT 0
-        )
-    """)
-    conn.commit()
 
 
 @dataclass
@@ -89,10 +72,14 @@ class Tracker:
             List of newly detected replies
         """
         conn = _get_db(self._db_path)
-        _ensure_replies_table(conn)
+        ensure_replies_table(conn)
         try:
             # 1. 최근 댓글 이력 조회
-            query = "SELECT DISTINCT platform, post_url, opportunity_id FROM actions WHERE action = 'comment' AND post_url != ''"
+            query = (
+                "SELECT DISTINCT platform, post_url, opportunity_id, "
+                "COALESCE(NULLIF(post_id, ''), opportunity_id) AS target_post_id "
+                "FROM actions WHERE action = 'comment' AND post_url != ''"
+            )
             params: list[Any] = []
             if platforms:
                 placeholders = ",".join("?" * len(platforms))
@@ -117,6 +104,7 @@ class Tracker:
                 {
                     "post_url": row["post_url"],
                     "opportunity_id": row["opportunity_id"] or "",
+                    "post_id": row["target_post_id"] or "",
                 }
             )
 
@@ -176,7 +164,7 @@ class Tracker:
         async with adapter:
             for post_info in posts:
                 try:
-                    post_id = post_info["opportunity_id"]
+                    post_id = post_info["post_id"]
                     if not post_id:
                         continue
 
@@ -227,7 +215,7 @@ class Tracker:
             return []
 
         conn = _get_db(self._db_path)
-        _ensure_replies_table(conn)
+        ensure_replies_table(conn)
         new: list[DetectedReply] = []
         try:
             now = datetime.now(timezone.utc).isoformat()
@@ -267,6 +255,8 @@ class Tracker:
             "bluesky": os.getenv("BLUESKY_HANDLE", ""),
             "twitter": os.getenv("TWITTER_USERNAME", ""),
             "reddit": os.getenv("REDDIT_USERNAME", ""),
+            "github_discussions": os.getenv("GITHUB_USERNAME", ""),
+            "discourse": os.getenv("DISCOURSE_API_USERNAME", ""),
         }
         username = username_map.get(platform, "")
         if username:
@@ -304,7 +294,7 @@ class Tracker:
     def get_pending_replies(self, platform: str | None = None) -> list[dict[str, Any]]:
         """Retrieve replies that have not been responded to yet."""
         conn = _get_db(self._db_path)
-        _ensure_replies_table(conn)
+        ensure_replies_table(conn)
         try:
             if platform:
                 rows = conn.execute(
@@ -322,7 +312,7 @@ class Tracker:
     def mark_responded(self, comment_id: str) -> None:
         """Mark a reply as responded."""
         conn = _get_db(self._db_path)
-        _ensure_replies_table(conn)
+        ensure_replies_table(conn)
         try:
             conn.execute(
                 "UPDATE replies SET responded = 1 WHERE comment_id = ?",
@@ -335,7 +325,7 @@ class Tracker:
     def get_stats(self) -> dict[str, Any]:
         """Reply tracking statistics."""
         conn = _get_db(self._db_path)
-        _ensure_replies_table(conn)
+        ensure_replies_table(conn)
         try:
             total = conn.execute("SELECT COUNT(*) as cnt FROM replies").fetchone()["cnt"]
             pending = conn.execute(

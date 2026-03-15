@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timezone
@@ -14,42 +13,14 @@ from . import pipeline
 from .events import Event, EventBus
 from .memory import Memory
 from .safety import Safety
+from .storage import DB_PATH, ensure_approval_queue_table, get_db
 from .tracker import Tracker
 from .types import DraftContext, Opportunity
 
-DB_PATH = Path(os.getenv("GWANJONG_DB_PATH", str(Path.home() / ".gwanjong" / "memory.db")))
-
 
 def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS approval_queue (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            topic TEXT NOT NULL,
-            platform TEXT NOT NULL,
-            action TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            opportunity_id TEXT NOT NULL,
-            post_id TEXT NOT NULL,
-            post_url TEXT NOT NULL,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            context_json TEXT NOT NULL,
-            opportunity_json TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            reviewed_at TEXT,
-            executed_at TEXT,
-            last_error TEXT
-        )
-    """)
-    columns = {row["name"] for row in conn.execute("PRAGMA table_info(approval_queue)").fetchall()}
-    if "executed_at" not in columns:
-        conn.execute("ALTER TABLE approval_queue ADD COLUMN executed_at TEXT")
-    if "last_error" not in columns:
-        conn.execute("ALTER TABLE approval_queue ADD COLUMN last_error TEXT")
-    conn.commit()
+    conn = get_db(db_path)
+    ensure_approval_queue_table(conn)
     return conn
 
 
@@ -214,7 +185,8 @@ class ApprovalQueue:
     ) -> dict[str, Any]:
         queue_bus = bus or self._build_bus()
         context = DraftContext(**json.loads(item["context_json"]))
-        context.opportunity_id = item["post_id"]
+        if not context.post_id:
+            context.post_id = item["post_id"]
 
         try:
             record, response = await pipeline.strike(

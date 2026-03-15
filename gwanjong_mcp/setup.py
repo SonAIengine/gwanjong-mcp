@@ -47,8 +47,7 @@ def check_platforms() -> dict[str, Any]:
     not_configured: list[str] = []
 
     for platform, guide in _get_guides().items():
-        required = guide.get("required_keys", [])
-        if all(merged.get(k) for k in required):
+        if _has_required_config(guide, merged):
             configured.append(platform)
         else:
             not_configured.append(platform)
@@ -67,6 +66,9 @@ def get_guide(platform: str) -> dict[str, Any]:
         "url": guide.get("url", ""),
         "steps": guide.get("steps", []),
         "required_keys": guide.get("required_keys", []),
+        "required_any": guide.get("required_any", []),
+        "optional_keys": guide.get("optional_keys", []),
+        "allowed_actions": guide.get("allowed_actions", ["comment"]),
     }
 
 
@@ -76,13 +78,25 @@ def save_credentials(platform: str, credentials: dict[str, str]) -> dict[str, An
     if platform not in guides:
         return {"error": f"지원하지 않는 플랫폼: {platform}", "supported": list(guides)}
 
-    required = guides[platform].get("required_keys", [])
-    missing = [k for k in required if k not in credentials or not credentials[k]]
+    guide = guides[platform]
+    required = guide.get("required_keys", [])
+    env = _load_env()
+    merged = {**env, **credentials}
+    missing = [k for k in required if not merged.get(k)]
     if missing:
         return {"error": f"누락된 키: {', '.join(missing)}", "required_keys": required}
+    required_any = guide.get("required_any", [])
+    missing_any = [group for group in required_any if not any(merged.get(key) for key in group)]
+    if missing_any:
+        return {
+            "error": "대체 필수 키가 누락됨",
+            "required_any": required_any,
+        }
+    validation_error = _validate_credentials(platform, merged)
+    if validation_error:
+        return validation_error
 
     # 기존 .env 로드 후 upsert
-    env = _load_env()
     for key, value in credentials.items():
         env[key] = value
         os.environ[key] = value  # 현재 프로세스에도 반영
@@ -111,3 +125,48 @@ async def test_connection(platform: str) -> dict[str, Any]:
             }
     except Exception as e:
         return {"test": "fail", "message": f"{platform} 연결 실패: {e}"}
+
+
+def _has_required_config(guide: dict[str, Any], values: dict[str, str]) -> bool:
+    required = guide.get("required_keys", [])
+    if any(not values.get(key) for key in required):
+        return False
+    required_any = guide.get("required_any", [])
+    return all(any(values.get(key) for key in group) for group in required_any)
+
+
+def _validate_credentials(platform: str, values: dict[str, str]) -> dict[str, Any] | None:
+    if platform == "github_discussions":
+        repos = {
+            part.strip()
+            for part in values.get("GITHUB_DISCUSSIONS_REPOS", "").split(",")
+            if part.strip()
+        }
+        default_repo = values.get("GITHUB_DISCUSSIONS_DEFAULT_REPO", "").strip()
+        category_id = values.get("GITHUB_DISCUSSIONS_CATEGORY_ID", "").strip()
+        if default_repo and default_repo not in repos:
+            return {
+                "error": "GITHUB_DISCUSSIONS_DEFAULT_REPO must be included in GITHUB_DISCUSSIONS_REPOS"
+            }
+        if category_id and not default_repo:
+            return {
+                "error": "GITHUB_DISCUSSIONS_CATEGORY_ID requires GITHUB_DISCUSSIONS_DEFAULT_REPO"
+            }
+
+    if platform == "discourse":
+        base_urls = {
+            values.get("DISCOURSE_BASE_URL", "").strip(),
+            *[
+                part.strip()
+                for part in values.get("DISCOURSE_BASE_URLS", "").split(",")
+                if part.strip()
+            ],
+        }
+        base_urls.discard("")
+        default_base = values.get("DISCOURSE_DEFAULT_BASE_URL", "").strip()
+        if default_base and default_base not in base_urls:
+            return {
+                "error": "DISCOURSE_DEFAULT_BASE_URL must match DISCOURSE_BASE_URL or be included in DISCOURSE_BASE_URLS"
+            }
+
+    return None

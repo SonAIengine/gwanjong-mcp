@@ -2,32 +2,42 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .memory import DB_PATH as _DEFAULT_DB_PATH
-from .memory import _get_db
-from .safety import DEFAULT_LIMITS
-from .tracker import _ensure_replies_table
+from .policy import DEFAULT_LIMITS, PLATFORMS
+from .storage import (
+    DB_PATH as _DEFAULT_DB_PATH,
+)
+from .storage import (
+    ensure_actions_tables,
+    ensure_rate_log_table,
+    ensure_replies_table,
+    ensure_scout_runs_table,
+    get_db,
+)
 
 DB_PATH = Path(os.getenv("GWANJONG_DB_PATH", str(_DEFAULT_DB_PATH)))
-
-_PLATFORMS = ["devto", "bluesky", "twitter", "reddit"]
 
 
 def get_summary(db_path: Path = DB_PATH) -> dict[str, Any]:
     """Collect all dashboard data in a single call."""
-    conn = _get_db(db_path)
-    _ensure_rate_log(conn)
-    _ensure_replies_table(conn)
+    conn = get_db(db_path)
+    ensure_actions_tables(conn)
+    ensure_rate_log_table(conn)
+    ensure_replies_table(conn)
+    ensure_scout_runs_table(conn)
     try:
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "platforms": _platform_stats(conn),
             "rate_limits": _rate_limit_status(conn),
+            "scout_health": _scout_health(conn),
+            "recent_scout_runs": _recent_scout_runs(conn),
             "pending_replies": _pending_replies(conn),
             "recent_activity": _recent_activity(conn, limit=30),
             "weekly_chart": _weekly_chart(conn),
@@ -37,19 +47,6 @@ def get_summary(db_path: Path = DB_PATH) -> dict[str, Any]:
         conn.close()
 
 
-def _ensure_rate_log(conn: sqlite3.Connection) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS rate_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            platform TEXT NOT NULL,
-            action TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            status TEXT DEFAULT 'ok'
-        )
-    """)
-    conn.commit()
-
-
 def _platform_stats(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Per-platform activity statistics."""
     now = datetime.now(timezone.utc)
@@ -57,7 +54,7 @@ def _platform_stats(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
 
     stats = []
-    for p in _PLATFORMS:
+    for p in PLATFORMS:
         # 오늘 활동
         today_row = conn.execute(
             "SELECT COUNT(*) as cnt FROM actions WHERE platform = ? AND timestamp >= ?",
@@ -132,6 +129,44 @@ def _rate_limit_status(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return limits
 
 
+def _recent_scout_runs(conn: sqlite3.Connection, limit: int = 10) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT topic, total_scanned, opportunities_count, degraded_platforms_json,
+               platform_errors_json, summary, created_at
+        FROM scout_runs
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            "topic": row["topic"],
+            "total_scanned": row["total_scanned"],
+            "opportunities_count": row["opportunities_count"],
+            "degraded_platforms": json.loads(row["degraded_platforms_json"]),
+            "platform_errors": json.loads(row["platform_errors_json"]),
+            "summary": row["summary"],
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+def _scout_health(conn: sqlite3.Connection) -> dict[str, Any]:
+    recent = _recent_scout_runs(conn, limit=10)
+    total_runs = conn.execute("SELECT COUNT(*) FROM scout_runs").fetchone()[0]
+    degraded_runs = conn.execute(
+        "SELECT COUNT(*) FROM scout_runs WHERE degraded_platforms_json != '[]'"
+    ).fetchone()[0]
+    return {
+        "total_runs": total_runs,
+        "degraded_runs": degraded_runs,
+        "latest": recent[0] if recent else None,
+    }
+
+
 def _pending_replies(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """List of unanswered replies."""
     rows = conn.execute(
@@ -157,19 +192,7 @@ def _recent_activity(conn: sqlite3.Connection, limit: int = 30) -> list[dict[str
         "SELECT * FROM actions ORDER BY id DESC LIMIT ?",
         (limit,),
     ).fetchall()
-    return [
-        {
-            "id": r[0],
-            "opportunity_id": r[1],
-            "platform": r[2],
-            "post_url": r[3],
-            "action": r[4],
-            "content": r[5],
-            "topic": r[6],
-            "timestamp": r[7],
-        }
-        for r in rows
-    ]
+    return [dict(r) for r in rows]
 
 
 def _weekly_chart(conn: sqlite3.Connection) -> list[dict[str, Any]]:

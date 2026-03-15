@@ -41,6 +41,18 @@ _DEFAULTS: dict[str, dict[str, Any]] = {
         "max_length": 300,
         "language": "en",
     },
+    "github_discussions": {
+        "tone": "technical-collaborative",
+        "style": "repo 맥락 존중, 재현 조건과 tradeoff를 명확히 설명",
+        "max_length": 700,
+        "language": "en",
+    },
+    "discourse": {
+        "tone": "direct-helpful",
+        "style": "포럼 답변 스타일, 단계와 근거를 짧게 제시",
+        "max_length": 900,
+        "language": "en",
+    },
 }
 
 

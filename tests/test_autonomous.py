@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
-import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -19,6 +19,11 @@ from gwanjong_mcp.types import DraftContext, Opportunity
 class DummyLLM:
     async def generate(self, context: DraftContext) -> str:
         return "Generated reply"
+
+
+class FailLLM:
+    async def generate(self, context: DraftContext) -> str:
+        raise AssertionError("LLM should not run during dry-run")
 
 
 def _make_opportunity() -> Opportunity:
@@ -77,6 +82,44 @@ async def test_process_opportunity_enqueues_for_approval(
     assert pending[0]["action"] == "comment"
     assert pending[0]["content"] == "Generated reply"
     assert pending[0]["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_process_opportunity_dry_run_skips_generation_and_queue(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    async def fake_draft(opportunity: Opportunity, bus: EventBus | None = None):
+        context = DraftContext(
+            opportunity_id=opportunity.id,
+            platform=opportunity.platform,
+            title=opportunity.title,
+            body_summary="summary",
+            top_comments=["comment 1"],
+            tone="technical",
+            suggested_approach="comment",
+        )
+        return context, {"title": opportunity.title}
+
+    async def fake_strike(*args, **kwargs):
+        raise AssertionError("strike should not run during dry-run")
+
+    monkeypatch.setattr("gwanjong_mcp.autonomous.pipeline.draft", fake_draft)
+    monkeypatch.setattr("gwanjong_mcp.autonomous.pipeline.strike", fake_strike)
+
+    queue = ApprovalQueue(db_path=tmp_path / "approval.db")
+    loop = AutonomousLoop(
+        bus=EventBus(),
+        llm=FailLLM(),
+        config=CycleConfig(dry_run=True, track_replies=False),
+        approval_queue=queue,
+    )
+    result = CycleResult(topic="MCP")
+
+    await loop._process_opportunity(_make_opportunity(), result)
+
+    assert result.actions_attempted == 0
+    assert result.actions_queued == 0
+    assert queue.get_pending() == []
 
 
 def test_approval_queue_status_updates(tmp_path: Path) -> None:
@@ -240,14 +283,16 @@ async def test_execute_approved_posts_and_updates_status(
     )
 
     async def fake_strike(ctx, action, content, bus=None):
-        assert ctx.opportunity_id == opportunity.post_id
+        assert ctx.opportunity_id == opportunity.id
+        assert ctx.post_id == opportunity.post_id
         assert action == "comment"
         assert content == "Generated reply"
         return (
             SimpleNamespace(
                 action="comment",
                 platform=opportunity.platform,
-                opportunity_id=opportunity.post_id,
+                opportunity_id=opportunity.id,
+                post_id=opportunity.post_id,
                 url="https://dev.to/example/post#comment",
                 timestamp="2026-03-13T00:00:00+00:00",
             ),
@@ -328,7 +373,8 @@ async def test_execute_approved_prevents_second_execution(
             SimpleNamespace(
                 action="comment",
                 platform=opportunity.platform,
-                opportunity_id=opportunity.post_id,
+                opportunity_id=opportunity.id,
+                post_id=opportunity.post_id,
                 url="https://dev.to/example/post#comment",
                 timestamp="2026-03-13T00:00:00+00:00",
             ),
@@ -371,7 +417,8 @@ async def test_retry_failed_reexecutes_item(
             SimpleNamespace(
                 action="comment",
                 platform=opportunity.platform,
-                opportunity_id=opportunity.post_id,
+                opportunity_id=opportunity.id,
+                post_id=opportunity.post_id,
                 url="https://dev.to/example/post#comment",
                 timestamp="2026-03-13T00:00:00+00:00",
             ),

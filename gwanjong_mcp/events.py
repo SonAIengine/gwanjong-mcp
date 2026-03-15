@@ -54,8 +54,11 @@ class EventBus:
         for handler in handlers:
             try:
                 result = await handler(event)
-                if is_before and result is False:
-                    raise Blocked(f"{event.type} blocked by {handler.__qualname__}")
+                if is_before:
+                    if isinstance(result, str) and result:
+                        raise Blocked(result)
+                    if result is False:
+                        raise Blocked(f"{event.type} blocked by {handler.__qualname__}")
             except Blocked:
                 raise
             except Exception:

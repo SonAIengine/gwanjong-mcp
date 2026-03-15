@@ -125,6 +125,16 @@
   .approval-note { font-size: 11px; color: var(--text2); margin-top: 6px; }
   .approval-error { font-size: 11px; color: var(--red); margin-top: 6px; line-height: 1.4; }
 
+  /* Scout health */
+  .scout-summary { font-size: 13px; color: var(--text); line-height: 1.5; margin-bottom: 10px; }
+  .scout-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text2); margin-bottom: 12px; }
+  .scout-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .scout-item:last-child { border-bottom: none; }
+  .scout-item.good .scout-status { color: var(--green); }
+  .scout-item.warn .scout-status { color: var(--yellow); }
+  .scout-status { font-size: 11px; font-weight: 600; }
+  .scout-errors { font-size: 11px; color: var(--text2); margin-top: 6px; line-height: 1.4; }
+
   /* Timeline */
   .tl-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
   .tl-item:last-child { border-bottom: none; }
@@ -161,6 +171,10 @@
   <div class="card">
     <h3>Rate Limits</h3>
     <div id="rate-limits"></div>
+  </div>
+  <div class="card">
+    <h3>Scout Health</h3>
+    <div id="scout-health"></div>
   </div>
 </div>
 
@@ -223,6 +237,7 @@ function render(d) {
   renderTotals(d.totals);
   renderPlatformStats(d.platforms);
   renderRateLimits(d.rate_limits);
+  renderScoutHealth(d.scout_health, d.recent_scout_runs);
   renderWeeklyChart(d.weekly_chart);
   renderEngagement(d.engagement);
   renderPendingReplies(d.pending_replies);
@@ -273,6 +288,66 @@ function renderRateLimits(limits) {
         ${cdText}
       </div>`;
   }).join('');
+}
+
+function renderScoutHealth(health, runs) {
+  const el = document.getElementById('scout-health');
+  const latest = health && health.latest;
+  if (!latest) {
+    el.innerHTML = '<div class="empty">No scout data yet</div>';
+    return;
+  }
+  const latestStatus = latest.degraded_platforms.length ? 'warn' : 'good';
+  const latestLabel = latest.degraded_platforms.length
+    ? `degraded: ${latest.degraded_platforms.join(', ')}`
+    : 'all platforms healthy';
+  const recentHtml = (runs || []).slice(0, 4).map(run => {
+    const statusClass = run.degraded_platforms.length ? 'warn' : 'good';
+    const statusLabel = run.degraded_platforms.length
+      ? `degraded ${run.degraded_platforms.join(', ')}`
+      : 'healthy';
+    const errorLines = Object.entries(run.platform_errors || {}).map(([platform, ops]) => {
+      const details = Object.entries(ops).map(([op, msg]) => {
+        const rendered = typeof msg === 'string'
+          ? trunc(msg, 40)
+          : Object.entries(msg || {}).map(([target, nested]) => `${shortTarget(target)}: ${trunc(String(nested), 32)}`).join(', ');
+        return `${op}: ${rendered}`;
+      }).join(' / ');
+      return `<div>${platform} · ${esc(details)}</div>`;
+    }).join('');
+    return `
+      <div class="scout-item ${statusClass}">
+        <div class="approval-header">
+          <span class="approval-title">${esc(run.topic)}</span>
+          <span class="scout-status">${statusLabel}</span>
+        </div>
+        <div class="scout-meta">
+          <span>${run.opportunities_count} opps</span>
+          <span>${run.total_scanned} scanned</span>
+          <span>${timeAgo(run.created_at)}</span>
+        </div>
+        <div class="scout-summary">${esc(run.summary)}</div>
+        ${errorLines ? `<div class="scout-errors">${errorLines}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="scout-summary">${esc(latest.summary)}</div>
+    <div class="scout-meta">
+      <span>${health.total_runs} runs</span>
+      <span>${health.degraded_runs} degraded</span>
+      <span class="scout-status ${latestStatus}">${latestLabel}</span>
+    </div>
+    ${recentHtml}`;
+}
+
+function shortTarget(target) {
+  try {
+    const url = new URL(target);
+    return url.host;
+  } catch (_e) {
+    return target;
+  }
 }
 
 function renderWeeklyChart(chart) {
