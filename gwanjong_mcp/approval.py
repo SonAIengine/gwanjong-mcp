@@ -13,13 +13,14 @@ from . import pipeline
 from .events import Event, EventBus
 from .memory import Memory
 from .safety import Safety
-from .storage import DB_PATH, ensure_approval_queue_table, get_db
+from .storage import DB_PATH, ensure_actions_tables, ensure_approval_queue_table, get_db
 from .tracker import Tracker
 from .types import DraftContext, Opportunity
 
 
 def _get_db(db_path: Path = DB_PATH) -> sqlite3.Connection:
     conn = get_db(db_path)
+    ensure_actions_tables(conn)
     ensure_approval_queue_table(conn)
     return conn
 
@@ -83,6 +84,11 @@ class ApprovalQueue:
                     json.dumps(asdict(opportunity), ensure_ascii=True),
                     created_at,
                 ),
+            )
+            # seen_posts에도 기록 → 다음 사이클에서 중복 제외
+            conn.execute(
+                "INSERT OR IGNORE INTO seen_posts (post_url, platform, first_seen, acted) VALUES (?, ?, ?, 1)",
+                (opportunity.url, opportunity.platform, created_at),
             )
             conn.commit()
             item_id = int(cursor.lastrowid)

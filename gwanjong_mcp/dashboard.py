@@ -714,11 +714,19 @@ async def handle_api_agent_start(request: web.Request) -> web.Response:
 
     _agent_logs[agent_id] = [f"[sys] {agent['name']} 시작: {' '.join(cmd)}"]
 
+    agent_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    if agent.get("personality"):
+        agent_env["GWANJONG_AGENT_PERSONALITY"] = agent["personality"]
+    if agent.get("name"):
+        agent_env["GWANJONG_AGENT_NAME"] = agent["name"]
+    if agent.get("tone"):
+        agent_env["GWANJONG_AGENT_TONE"] = agent["tone"]
+
     new_proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        env=agent_env,
     )
     _agent_daemons[agent_id] = new_proc
     asyncio.create_task(_read_agent_output(agent_id, new_proc.stdout, "out"))

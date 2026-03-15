@@ -163,11 +163,18 @@ class CommentGenerator:
         avoid = "\n".join(f"- {a}" for a in WRITING_AVOID)
         output_label = "post" if action == "post" else "comment"
 
+        # 에이전트 캐릭터 personality (환경변수로 전달됨)
+        agent_name = os.getenv("GWANJONG_AGENT_NAME", "")
+        agent_personality = os.getenv("GWANJONG_AGENT_PERSONALITY", "")
+        agent_section = ""
+        if agent_personality:
+            agent_section = f"\nCHARACTER:\nYour name is {agent_name}. {agent_personality}\nWrite in a way that reflects this personality.\n"
+
         return f"""{writing_guide}
 
 PERSONA:
 {persona.to_system_prompt()}
-
+{agent_section}
 AVOID:
 {avoid}
 

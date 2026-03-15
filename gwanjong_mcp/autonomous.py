@@ -188,6 +188,17 @@ class AutonomousLoop:
 
     async def _process_opportunity(self, opp: Opportunity, result: CycleResult) -> None:
         """Process a single opportunity: draft -> generate -> strike."""
+        # 승인 큐에 이미 있는 글이면 건너뛰기
+        try:
+            pending = self.approval_queue.get_pending()
+            failed = self.approval_queue.get_failed()
+            queued_urls = {item["post_url"] for item in pending + failed if item.get("post_url")}
+            if opp.url in queued_urls:
+                logger.info("승인 큐에 이미 존재: %s — 건너뜀", opp.title[:50])
+                return
+        except Exception:
+            pass
+
         try:
             # draft
             ctx, _draft_response = await pipeline.draft(opp, bus=self.bus)
