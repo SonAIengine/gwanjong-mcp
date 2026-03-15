@@ -409,6 +409,8 @@ async def handle_api_summary(request: web.Request) -> web.Response:
 
 
 async def perform_approval_action(item_id: int, action: str) -> dict:
+    from .events import Blocked
+
     queue = ApprovalQueue(db_path=DB_PATH)
 
     try:
@@ -422,6 +424,8 @@ async def perform_approval_action(item_id: int, action: str) -> dict:
                 raise web.HTTPNotFound(text=f"approval item not found: {item_id}")
             queue.mark_rejected(item_id)
             return {"id": item_id, "queue_status": "rejected"}
+    except Blocked as exc:
+        return {"id": item_id, "queue_status": "failed", "error": str(exc)}
     except ValueError as exc:
         raise web.HTTPBadRequest(text=str(exc)) from exc
 

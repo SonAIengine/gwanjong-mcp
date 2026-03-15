@@ -142,7 +142,7 @@ class ApprovalQueue:
         self._update_status(item_id, "approved", allowed_current_statuses={"pending"})
 
     def mark_rejected(self, item_id: int) -> None:
-        self._update_status(item_id, "rejected", allowed_current_statuses={"pending"})
+        self._update_status(item_id, "rejected", allowed_current_statuses={"pending", "failed"})
 
     def stats(self) -> dict[str, int]:
         conn = _get_db(self._db_path)
