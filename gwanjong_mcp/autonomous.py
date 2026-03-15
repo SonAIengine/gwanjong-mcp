@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from . import pipeline
 from .approval import ApprovalQueue
@@ -12,7 +13,7 @@ from .events import Blocked, Event, EventBus
 from .llm import CommentGenerator
 from .memory import Memory
 from .tracker import Tracker
-from .types import Opportunity
+from .types import DraftContext, Opportunity
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ class AutonomousLoop:
             result.errors.append(f"scheduler 처리 실패: {e}")
             logger.error("scheduler 처리 실패", exc_info=True)
 
-        # 7. 답글 스캔 (track_replies 활성화 시)
+        # 7. 답글 스캔 + 자동 대댓글 (track_replies 활성화 시)
         if self.config.track_replies:
             try:
                 tracker = Tracker()
@@ -170,6 +171,9 @@ class AutonomousLoop:
                         reply.author,
                         reply.body[:80],
                     )
+                    # 자동 대댓글
+                    if not self.config.dry_run:
+                        await self._reply_to_reply(reply, tracker, result)
             except Exception as e:
                 result.errors.append(f"reply scan 실패: {e}")
                 logger.error("reply scan 실패", exc_info=True)
@@ -327,6 +331,73 @@ class AutonomousLoop:
 
         self._running = False
         logger.info("Daemon stopped")
+
+    async def _reply_to_reply(
+        self,
+        reply: Any,
+        tracker: Tracker,
+        result: CycleResult,
+    ) -> None:
+        """Generate and post a reply to someone who replied to our comment."""
+        from .storage import get_db
+
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT content, post_id FROM actions WHERE platform = ? AND action = 'comment' AND post_url LIKE ? ORDER BY id DESC LIMIT 1",
+                (reply.platform, f"%{reply.post_url.split('#')[0]}%"),
+            ).fetchone()
+            my_original = row["content"] if row else ""
+            post_id = row["post_id"] if row else ""
+        finally:
+            conn.close()
+
+        if not post_id:
+            logger.warning("대댓글 건너뜀: post_id를 찾을 수 없음 (%s)", reply.post_url)
+            return
+
+        # 대댓글용 DraftContext 구성
+        ctx = DraftContext(
+            opportunity_id=f"reply_{reply.comment_id}",
+            platform=reply.platform,
+            title=reply.post_title or "",
+            body_summary=f"내가 쓴 댓글:\n{my_original}\n\n@{reply.author}의 답글:\n{reply.body}",
+            post_id=post_id,
+            top_comments=[],
+            tone="conversational",
+            suggested_approach="comment",
+        )
+
+        # LLM으로 대댓글 생성
+        try:
+            content = await self.llm.generate(ctx)
+        except Exception as e:
+            logger.warning("대댓글 생성 실패: %s — %s", reply.comment_id, e)
+            return
+
+        # 발행
+        try:
+            record, response = await pipeline.strike(
+                ctx,
+                "comment",
+                content,
+                bus=self.bus,
+                campaign_id=self.config.campaign_id,
+            )
+            if response.get("status") == "posted":
+                tracker.mark_responded(reply.comment_id)
+                logger.info(
+                    "대댓글 발행: %s @%s → %s",
+                    reply.platform,
+                    reply.author,
+                    response.get("url", ""),
+                )
+            else:
+                logger.warning("대댓글 발행 실패: %s", response.get("error", ""))
+        except Blocked as e:
+            logger.info("대댓글 차단 (rate limit): %s", e)
+        except Exception as e:
+            logger.warning("대댓글 에러: %s — %s", reply.comment_id, e)
 
     def stop(self) -> None:
         """Request daemon stop."""
