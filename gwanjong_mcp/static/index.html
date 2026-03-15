@@ -282,7 +282,16 @@
     </div>
     <div class="form-row"><span class="form-label">성격</span><input class="form-input" id="a-personality" placeholder="기술 깊이 있고 유머있는 시니어 개발자"></div>
     <div class="form-row"><span class="form-label">담당 토픽</span><input class="form-input" id="a-topics" value="MCP,LLM" placeholder="쉼표 구분"></div>
-    <div class="form-row"><span class="form-label">담당 플랫폼</span><input class="form-input" id="a-platforms" value="devto" placeholder="devto, twitter"></div>
+    <div class="form-row" style="align-items:flex-start"><span class="form-label" style="margin-top:4px">담당 플랫폼</span>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <label class="form-check"><input type="checkbox" name="a-platform" value="devto" checked><span class="pi devto"></span>Dev.to</label>
+        <label class="form-check"><input type="checkbox" name="a-platform" value="bluesky"><span class="pi bluesky"></span>Bluesky</label>
+        <label class="form-check"><input type="checkbox" name="a-platform" value="twitter"><span class="pi twitter"></span>Twitter</label>
+        <label class="form-check"><input type="checkbox" name="a-platform" value="reddit"><span class="pi reddit"></span>Reddit</label>
+        <label class="form-check"><input type="checkbox" name="a-platform" value="github_discussions"><span class="pi github_discussions"></span>GitHub</label>
+        <label class="form-check"><input type="checkbox" name="a-platform" value="discourse"><span class="pi discourse"></span>Discourse</label>
+      </div>
+    </div>
     <div class="form-row"><span class="form-label">말투</span>
       <select class="form-input" id="a-tone">
         <option value="casual-professional">캐주얼 프로</option>
@@ -497,7 +506,7 @@ async function createAgent() {
     avatar_seed: document.getElementById('a-name').value,
     personality: document.getElementById('a-personality').value,
     topics: document.getElementById('a-topics').value.split(',').map(s=>s.trim()).filter(Boolean),
-    platforms: document.getElementById('a-platforms').value.split(',').map(s=>s.trim()).filter(Boolean),
+    platforms: [...document.querySelectorAll('input[name="a-platform"]:checked')].map(c=>c.value),
     tone: document.getElementById('a-tone').value,
     require_approval: document.getElementById('a-approval').checked,
     dry_run: document.getElementById('a-dry-run').checked,
