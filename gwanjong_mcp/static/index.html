@@ -385,6 +385,8 @@
 
 <script>
 const REFRESH = 30000;
+let _lastSummary = null;
+let _fetchFails = 0;
 const PCOLORS = {devto:'#3b49df', bluesky:'#0085ff', twitter:'#1da1f2', reddit:'#ff4500', github_discussions:'#8957e5', discourse:'#e9573f'};
 const PNAMES = Object.keys(PCOLORS);
 const ACTION_KO = {comment:'댓글', post:'포스트', upvote:'추천'};
@@ -409,7 +411,22 @@ function closeModal(id) { document.getElementById(id).classList.remove('show'); 
 
 // ── 현황판 ──
 async function fetchSummary() {
-  try { const r = await fetch('/api/summary'); renderOverview(await r.json()); } catch(e) { console.error(e); }
+  try {
+    const r = await fetch('/api/summary');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    _lastSummary = data;
+    _fetchFails = 0;
+    renderOverview(data);
+    document.getElementById('updated-at').style.color = '';
+  } catch(e) {
+    _fetchFails++;
+    console.error('fetchSummary 실패:', e);
+    if (_lastSummary) {
+      document.getElementById('updated-at').textContent = `갱신 실패 (${_fetchFails}회) — 마지막: ${new Date(_lastSummary.generated_at).toLocaleTimeString('ko-KR')}`;
+      document.getElementById('updated-at').style.color = 'var(--yellow)';
+    }
+  }
 }
 
 function renderOverview(d) {

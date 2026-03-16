@@ -15,6 +15,7 @@ from .events import EventBus
 from .llm import CommentGenerator
 from .memory import Memory
 from .safety import Safety
+from .storage import ensure_indexes, get_db
 
 logger = logging.getLogger(__name__)
 
@@ -116,9 +117,15 @@ def main() -> None:
         campaign_id=args.campaign or "",
     )
 
+    # DB 인덱스 보장 (데몬 시작 시 1회)
+    _init_conn = get_db()
+    ensure_indexes(_init_conn)
+    _init_conn.close()
+
     # EventBus + 플러그인 조립
     bus = EventBus()
-    Safety().attach(bus)
+    safety = Safety()
+    safety.attach(bus)
     Memory().attach(bus)
 
     from .conversion import ConversionTracker
@@ -127,7 +134,7 @@ def main() -> None:
 
     llm = CommentGenerator(model=args.model)
 
-    loop = AutonomousLoop(bus=bus, llm=llm, config=config)
+    loop = AutonomousLoop(bus=bus, llm=llm, config=config, safety=safety)
 
     # auto-plan 처리
     if args.auto_plan and args.campaign:

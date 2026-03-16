@@ -217,19 +217,21 @@ async def scout(
     seen_authors: set[str] = set()
     try:
         conn = get_db()
-        # 이미 활동한 게시글 URL과 매칭되는 post의 author는 all_posts에서 찾기
-        acted_urls = {
-            r[0].split("#")[0]
-            for r in conn.execute(
-                "SELECT DISTINCT post_url FROM actions WHERE action = 'comment' AND post_url != ''"
-            ).fetchall()
-        }
-        conn.close()
-        for post in all_posts:
-            if post.url in acted_urls:
-                seen_authors.add(post.author.lower())
+        try:
+            # 이미 활동한 게시글 URL과 매칭되는 post의 author는 all_posts에서 찾기
+            acted_urls = {
+                r[0].split("#")[0]
+                for r in conn.execute(
+                    "SELECT DISTINCT post_url FROM actions WHERE action = 'comment' AND post_url != ''"
+                ).fetchall()
+            }
+            for post in all_posts:
+                if post.url in acted_urls:
+                    seen_authors.add(post.author.lower())
+        finally:
+            conn.close()
     except Exception:
-        pass
+        logger.warning("author 분산 선택용 DB 조회 실패", exc_info=True)
 
     top: list[tuple[Post, float]] = []
     for post, score in scored:

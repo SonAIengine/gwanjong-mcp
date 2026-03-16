@@ -18,6 +18,7 @@ from .events import Blocked, EventBus
 from .memory import Memory
 from .safety import Safety
 from .scheduler import Scheduler
+from .storage import ensure_indexes, get_db
 from .tracker import Tracker
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,11 @@ Safety().attach(bus)
 Memory().attach(bus)
 Tracker().attach(bus)
 ConversionTracker().attach(bus)
+
+# DB 인덱스 보장 (서버 시작 시 1회)
+_init_conn = get_db()
+ensure_indexes(_init_conn)
+_init_conn.close()
 
 server = PipelineMCP("gwanjong", state=GwanjongState)
 

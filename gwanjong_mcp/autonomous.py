@@ -12,6 +12,7 @@ from .approval import ApprovalQueue
 from .events import Blocked, Event, EventBus
 from .llm import CommentGenerator
 from .memory import Memory
+from .safety import Safety
 from .tracker import Tracker
 from .types import DraftContext, Opportunity
 
@@ -60,11 +61,13 @@ class AutonomousLoop:
         llm: CommentGenerator | None = None,
         config: CycleConfig | None = None,
         approval_queue: ApprovalQueue | None = None,
+        safety: Safety | None = None,
     ) -> None:
         self.bus = bus
         self.llm = llm or CommentGenerator()
         self.config = config or CycleConfig()
         self.approval_queue = approval_queue or ApprovalQueue()
+        self.safety = safety
         self._running = False
 
     async def run_cycle(self, topic: str) -> CycleResult:
@@ -77,11 +80,23 @@ class AutonomousLoop:
         """
         result = CycleResult(topic=topic)
 
+        # 0. 차단 플랫폼 제외 (불필요한 API 호출 방지)
+        effective_platforms = self.config.platforms
+        if self.safety:
+            banned = self.safety.get_banned_platforms()
+            if banned:
+                base = effective_platforms or []
+                if base:
+                    effective_platforms = [p for p in base if p not in banned]
+                else:
+                    effective_platforms = None  # 전체에서 제외는 scout 내부에서 처리 불가 → 로그만
+                logger.info("차단 플랫폼 제외: %s", banned)
+
         # 1. scout
         try:
             opportunities, response = await pipeline.scout(
                 topic,
-                platforms=self.config.platforms,
+                platforms=effective_platforms,
                 limit=self.config.scout_limit,
                 bus=self.bus,
                 campaign_id=self.config.campaign_id,
@@ -201,11 +216,14 @@ class AutonomousLoop:
                 logger.info("승인 큐에 이미 존재: %s — 건너뜀", opp.title[:50])
                 return
         except Exception:
-            pass
+            logger.debug("승인 큐 중복 체크 실패", exc_info=True)
 
         try:
-            # draft
-            ctx, _draft_response = await pipeline.draft(opp, bus=self.bus)
+            # draft (1회 재시도)
+            ctx, _draft_response = await self._retry(
+                lambda: pipeline.draft(opp, bus=self.bus),
+                label=f"draft({opp.id})",
+            )
         except Exception as e:
             result.errors.append(f"draft 실패 ({opp.id}): {e}")
             logger.error("draft 실패: %s", opp.id, exc_info=True)
@@ -254,15 +272,16 @@ class AutonomousLoop:
             logger.info("승인 대기 등록: #%d %s — %s", item.id, opp.platform, opp.title[:50])
             return
 
-        # strike
+        # strike (1회 재시도)
         result.actions_attempted += 1
         try:
-            record, response = await pipeline.strike(
-                ctx,
-                action,
-                content,
-                bus=self.bus,
-                campaign_id=self.config.campaign_id,
+            record, response = await self._retry(
+                lambda _ctx=ctx, _act=action, _cont=content: pipeline.strike(
+                    _ctx, _act, _cont,
+                    bus=self.bus,
+                    campaign_id=self.config.campaign_id,
+                ),
+                label=f"strike({opp.id})",
             )
             if response.get("status") == "posted":
                 result.actions_succeeded += 1
@@ -410,6 +429,26 @@ class AutonomousLoop:
             logger.info("대댓글 차단 (rate limit): %s", e)
         except Exception as e:
             logger.warning("대댓글 에러: %s — %s", reply.comment_id, e)
+
+    @staticmethod
+    async def _retry(fn, *, label: str = "", max_retries: int = 1, base_delay: float = 3.0):
+        """Retry an async callable with exponential backoff. Re-raises on final failure."""
+        last_exc: Exception | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                return await fn()
+            except (Blocked, ValueError):
+                raise  # 의도적 차단이나 로직 에러는 재시도 안 함
+            except Exception as e:
+                last_exc = e
+                if attempt < max_retries:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(
+                        "%s 실패 (시도 %d/%d), %.0f초 후 재시도: %s",
+                        label, attempt + 1, max_retries + 1, delay, e,
+                    )
+                    await asyncio.sleep(delay)
+        raise last_exc  # type: ignore[misc]
 
     def stop(self) -> None:
         """Request daemon stop."""

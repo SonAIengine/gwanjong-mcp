@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import collections
 import json
 import logging
 import os
@@ -29,6 +30,7 @@ from .storage import (
     ensure_approval_queue_table,
     ensure_campaigns_table,
     ensure_conversions_table,
+    ensure_indexes,
     ensure_rate_log_table,
     ensure_replies_table,
     ensure_schedule_table,
@@ -44,22 +46,18 @@ DB_PATH = Path(_DEFAULT_DB_PATH)
 # ── Daemon process manager ──
 
 _daemon_proc: asyncio.subprocess.Process | None = None
-_daemon_log: list[str] = []
+_daemon_log: collections.deque[str] = collections.deque(maxlen=200)
 _daemon_config: dict = {}
-_DAEMON_LOG_MAX = 200
 
 
 async def _read_daemon_output(stream: asyncio.StreamReader, label: str) -> None:
     """Read daemon stdout/stderr and append to log buffer."""
-    global _daemon_log
     while True:
         line = await stream.readline()
         if not line:
             break
         text = line.decode("utf-8", errors="replace").rstrip()
         _daemon_log.append(f"[{label}] {text}")
-        if len(_daemon_log) > _DAEMON_LOG_MAX:
-            _daemon_log = _daemon_log[-_DAEMON_LOG_MAX:]
         logger.debug("daemon %s: %s", label, text)
 
 
@@ -91,7 +89,8 @@ async def daemon_start(config: dict) -> dict:
     if config.get("auto_plan"):
         cmd.append("--auto-plan")
 
-    _daemon_log = [f"[sys] Starting: {' '.join(cmd)}"]
+    _daemon_log.clear()
+    _daemon_log.append(f"[sys] Starting: {' '.join(cmd)}")
     _daemon_config = config
 
     _daemon_proc = await asyncio.create_subprocess_exec(
@@ -148,36 +147,41 @@ def daemon_status() -> dict:
     }
 
 
+_db_initialized = False
+
+
 def _get_db() -> sqlite3.Connection:
+    global _db_initialized
     conn = get_db(DB_PATH)
-    ensure_actions_tables(conn)
-    ensure_rate_log_table(conn)
-    ensure_replies_table(conn)
-    ensure_scout_runs_table(conn)
-    ensure_approval_queue_table(conn)
-    ensure_campaigns_table(conn)
-    ensure_conversions_table(conn)
-    ensure_schedule_table(conn)
-    ensure_agents_table(conn)
+    if not _db_initialized:
+        ensure_actions_tables(conn)
+        ensure_rate_log_table(conn)
+        ensure_replies_table(conn)
+        ensure_scout_runs_table(conn)
+        ensure_approval_queue_table(conn)
+        ensure_campaigns_table(conn)
+        ensure_conversions_table(conn)
+        ensure_schedule_table(conn)
+        ensure_agents_table(conn)
+        ensure_indexes(conn)
+        _db_initialized = True
     return conn
 
 
 # ── Agent (character) management ──
 
 _agent_daemons: dict[str, asyncio.subprocess.Process] = {}
-_agent_logs: dict[str, list[str]] = {}
+_agent_logs: dict[str, collections.deque[str]] = {}
 
 
 async def _read_agent_output(agent_id: str, stream: asyncio.StreamReader, label: str) -> None:
-    logs = _agent_logs.setdefault(agent_id, [])
+    logs = _agent_logs.setdefault(agent_id, collections.deque(maxlen=200))
     while True:
         line = await stream.readline()
         if not line:
             break
         text = line.decode("utf-8", errors="replace").rstrip()
         logs.append(f"[{label}] {text}")
-        if len(logs) > _DAEMON_LOG_MAX:
-            _agent_logs[agent_id] = logs[-_DAEMON_LOG_MAX:]
 
 
 def get_summary() -> dict:
@@ -187,57 +191,68 @@ def get_summary() -> dict:
         today = now.strftime("%Y-%m-%d")
         week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
 
-        # Platform stats
-        platforms = []
-        for p in PLATFORMS:
-            today_cnt = conn.execute(
-                "SELECT COUNT(*) FROM actions WHERE platform=? AND timestamp>=?", (p, today)
-            ).fetchone()[0]
-            week_cnt = conn.execute(
-                "SELECT COUNT(*) FROM actions WHERE platform=? AND timestamp>=?", (p, week_ago)
-            ).fetchone()[0]
-            total_cnt = conn.execute(
-                "SELECT COUNT(*) FROM actions WHERE platform=?", (p,)
-            ).fetchone()[0]
-            actions_week = {
-                r["action"]: r["cnt"]
-                for r in conn.execute(
-                    "SELECT action, COUNT(*) as cnt FROM actions WHERE platform=? AND timestamp>=? GROUP BY action",
-                    (p, week_ago),
-                ).fetchall()
-            }
-            reply_cnt = conn.execute(
-                "SELECT COUNT(*) FROM replies WHERE platform=?", (p,)
-            ).fetchone()[0]
-            platforms.append(
-                {
-                    "platform": p,
-                    "today": today_cnt,
-                    "week": week_cnt,
-                    "total": total_cnt,
-                    "actions_week": actions_week,
-                    "replies_received": reply_cnt,
-                }
-            )
+        # ── Platform stats (배치 쿼리: 플랫폼별 개별 쿼리 → 2개 집계 쿼리) ──
+        action_stats: dict[str, dict] = {p: {"today": 0, "week": 0, "total": 0, "actions_week": {}} for p in PLATFORMS}
+        for row in conn.execute(
+            """SELECT platform,
+                      SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as today_cnt,
+                      SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as week_cnt,
+                      COUNT(*) as total_cnt
+               FROM actions GROUP BY platform""",
+            (today, week_ago),
+        ).fetchall():
+            p = row["platform"]
+            if p in action_stats:
+                action_stats[p]["today"] = row["today_cnt"]
+                action_stats[p]["week"] = row["week_cnt"]
+                action_stats[p]["total"] = row["total_cnt"]
 
-        # Rate limits + cooldown
+        for row in conn.execute(
+            "SELECT platform, action, COUNT(*) as cnt FROM actions WHERE timestamp >= ? GROUP BY platform, action",
+            (week_ago,),
+        ).fetchall():
+            p = row["platform"]
+            if p in action_stats:
+                action_stats[p]["actions_week"][row["action"]] = row["cnt"]
+
+        reply_counts: dict[str, int] = {}
+        for row in conn.execute("SELECT platform, COUNT(*) as cnt FROM replies GROUP BY platform").fetchall():
+            reply_counts[row["platform"]] = row["cnt"]
+
+        platforms = [
+            {
+                "platform": p,
+                "today": action_stats[p]["today"],
+                "week": action_stats[p]["week"],
+                "total": action_stats[p]["total"],
+                "actions_week": action_stats[p]["actions_week"],
+                "replies_received": reply_counts.get(p, 0),
+            }
+            for p in PLATFORMS
+        ]
+
+        # ── Rate limits + cooldown (배치 쿼리) ──
+        rate_today: dict[str, dict[str, int]] = {}
+        for row in conn.execute(
+            "SELECT platform, action, COUNT(*) as cnt FROM rate_log WHERE timestamp >= ? AND status='ok' GROUP BY platform, action",
+            (today,),
+        ).fetchall():
+            rate_today.setdefault(row["platform"], {})[row["action"]] = row["cnt"]
+
+        last_actions: dict[str, str] = {}
+        for row in conn.execute(
+            """SELECT platform, MAX(timestamp) as last_ts
+               FROM rate_log WHERE status='ok' GROUP BY platform"""
+        ).fetchall():
+            last_actions[row["platform"]] = row["last_ts"]
+
         rate_limits = []
         for p, limits in DEFAULT_LIMITS.items():
-            c_used = conn.execute(
-                "SELECT COUNT(*) FROM rate_log WHERE platform=? AND action='comment' AND timestamp>=? AND status='ok'",
-                (p, today),
-            ).fetchone()[0]
-            p_used = conn.execute(
-                "SELECT COUNT(*) FROM rate_log WHERE platform=? AND action='post' AND timestamp>=? AND status='ok'",
-                (p, today),
-            ).fetchone()[0]
-            last = conn.execute(
-                "SELECT timestamp FROM rate_log WHERE platform=? AND status='ok' ORDER BY id DESC LIMIT 1",
-                (p,),
-            ).fetchone()
-            last_ts = last["timestamp"] if last else None
+            p_rates = rate_today.get(p, {})
+            c_used = p_rates.get("comment", 0)
+            p_used = p_rates.get("post", 0)
+            last_ts = last_actions.get(p)
 
-            # 쿨다운 계산
             cooldown_remaining = 0
             if last_ts:
                 try:
@@ -332,47 +347,53 @@ def get_summary() -> dict:
             for r in conn.execute("SELECT * FROM actions ORDER BY id DESC LIMIT 30").fetchall()
         ]
 
-        # Weekly chart — 플랫폼별 분리
-        chart = []
+        # Weekly chart — 단일 쿼리로 7일치 플랫폼별 집계
+        chart_start = (now - timedelta(days=6)).strftime("%Y-%m-%d")
+        chart_data: dict[str, dict] = {}
         for i in range(6, -1, -1):
             day = (now - timedelta(days=i)).strftime("%Y-%m-%d")
-            day_data: dict = {"date": day, "total": 0}
-            for p in PLATFORMS:
-                cnt = conn.execute(
-                    "SELECT COUNT(*) FROM actions WHERE platform=? AND timestamp>=? AND timestamp<date(?,'+1 day')",
-                    (p, day, day),
-                ).fetchone()[0]
-                day_data[p] = cnt
-                day_data["total"] += cnt
-            chart.append(day_data)
+            chart_data[day] = {"date": day, "total": 0, **{p: 0 for p in PLATFORMS}}
+        for row in conn.execute(
+            """SELECT date(timestamp) as day, platform, COUNT(*) as cnt
+               FROM actions WHERE timestamp >= ?
+               GROUP BY day, platform""",
+            (chart_start,),
+        ).fetchall():
+            day, p, cnt = row["day"], row["platform"], row["cnt"]
+            if day in chart_data:
+                chart_data[day][p] = cnt
+                chart_data[day]["total"] += cnt
+        chart = list(chart_data.values())
 
-        # Engagement — 플랫폼별 댓글 대비 답글 비율
+        # Engagement — 배치 쿼리 (actions + replies 이미 집계됨)
+        comments_by_platform: dict[str, int] = {}
+        for row in conn.execute(
+            "SELECT platform, COUNT(*) as cnt FROM actions WHERE action='comment' GROUP BY platform"
+        ).fetchall():
+            comments_by_platform[row["platform"]] = row["cnt"]
+
         engagement = []
         for p in PLATFORMS:
-            comments_sent = conn.execute(
-                "SELECT COUNT(*) FROM actions WHERE platform=? AND action='comment'", (p,)
-            ).fetchone()[0]
-            replies_got = conn.execute(
-                "SELECT COUNT(*) FROM replies WHERE platform=?", (p,)
-            ).fetchone()[0]
-            rate = round(replies_got / comments_sent * 100, 1) if comments_sent > 0 else 0
+            cs = comments_by_platform.get(p, 0)
+            rr = reply_counts.get(p, 0)
+            rate = round(rr / cs * 100, 1) if cs > 0 else 0
             engagement.append(
-                {
-                    "platform": p,
-                    "comments_sent": comments_sent,
-                    "replies_received": replies_got,
-                    "reply_rate": rate,
-                }
+                {"platform": p, "comments_sent": cs, "replies_received": rr, "reply_rate": rate}
             )
 
-        # Totals
+        # Totals — 단일 쿼리들
+        totals_row = conn.execute(
+            """SELECT
+                (SELECT COUNT(*) FROM actions) as total_actions,
+                (SELECT COUNT(*) FROM seen_posts) as total_seen_posts,
+                (SELECT COUNT(*) FROM replies) as total_replies,
+                (SELECT COUNT(*) FROM replies WHERE responded=0) as pending_replies"""
+        ).fetchone()
         totals = {
-            "total_actions": conn.execute("SELECT COUNT(*) FROM actions").fetchone()[0],
-            "total_seen_posts": conn.execute("SELECT COUNT(*) FROM seen_posts").fetchone()[0],
-            "total_replies": conn.execute("SELECT COUNT(*) FROM replies").fetchone()[0],
-            "pending_replies": conn.execute(
-                "SELECT COUNT(*) FROM replies WHERE responded=0"
-            ).fetchone()[0],
+            "total_actions": totals_row["total_actions"],
+            "total_seen_posts": totals_row["total_seen_posts"],
+            "total_replies": totals_row["total_replies"],
+            "pending_replies": totals_row["pending_replies"],
             "pending_approvals": approval_stats_row.get("pending", 0),
             "posted_approvals": approval_stats_row.get("posted", 0),
         }
@@ -491,8 +512,9 @@ async def handle_api_schedule(request: web.Request) -> web.Response:
 async def handle_api_daemon_start(request: web.Request) -> web.Response:
     try:
         config = await request.json()
-    except Exception:
+    except (json.JSONDecodeError, Exception):
         config = {}
+        logger.debug("daemon start: JSON 파싱 실패, 기본 config 사용")
     result = await daemon_start(config)
     status = 200 if "error" not in result else 409
     return web.json_response(result, status=status)
@@ -510,8 +532,9 @@ async def handle_api_daemon_status(request: web.Request) -> web.Response:
 async def handle_api_daemon_logs(request: web.Request) -> web.Response:
     offset = int(request.query.get("offset", "0"))
     limit = int(request.query.get("limit", "100"))
-    logs = _daemon_log[offset : offset + limit]
-    return web.json_response({"logs": logs, "total": len(_daemon_log), "offset": offset})
+    all_logs = list(_daemon_log)
+    logs = all_logs[offset : offset + limit]
+    return web.json_response({"logs": logs, "total": len(all_logs), "offset": offset})
 
 
 # ── Campaign API handlers ──
@@ -527,7 +550,8 @@ async def handle_api_campaign_report(request: web.Request) -> web.Response:
 async def handle_api_campaign_create(request: web.Request) -> web.Response:
     try:
         data = await request.json()
-    except Exception:
+    except (json.JSONDecodeError, Exception) as e:
+        logger.debug("campaign create: JSON 파싱 실패: %s", e)
         return web.json_response({"error": "invalid JSON"}, status=400)
     if "name" not in data:
         return web.json_response({"error": "name 필수"}, status=400)
@@ -547,7 +571,8 @@ async def handle_api_campaign_update(request: web.Request) -> web.Response:
     campaign_id = request.match_info["campaign_id"]
     try:
         data = await request.json()
-    except Exception:
+    except (json.JSONDecodeError, Exception) as e:
+        logger.debug("campaign update: JSON 파싱 실패: %s", e)
         return web.json_response({"error": "invalid JSON"}, status=400)
     mgr = CampaignManager(db_path=DB_PATH)
     camp = mgr.update(campaign_id, data)
@@ -602,7 +627,8 @@ async def handle_api_agents_list(request: web.Request) -> web.Response:
 async def handle_api_agent_create(request: web.Request) -> web.Response:
     try:
         data = await request.json()
-    except Exception:
+    except (json.JSONDecodeError, Exception) as e:
+        logger.debug("agent create: JSON 파싱 실패: %s", e)
         return web.json_response({"error": "invalid JSON"}, status=400)
     if "name" not in data:
         return web.json_response({"error": "name 필수"}, status=400)
@@ -644,7 +670,8 @@ async def handle_api_agent_update(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
     try:
         data = await request.json()
-    except Exception:
+    except (json.JSONDecodeError, Exception) as e:
+        logger.debug("agent update: JSON 파싱 실패: %s", e)
         return web.json_response({"error": "invalid JSON"}, status=400)
 
     conn = _get_db()
@@ -735,7 +762,7 @@ async def handle_api_agent_start(request: web.Request) -> web.Response:
     if agent.get("dry_run", 0):
         cmd.append("--dry-run")
 
-    _agent_logs[agent_id] = [f"[sys] {agent['name']} 시작: {' '.join(cmd)}"]
+    _agent_logs[agent_id] = collections.deque([f"[sys] {agent['name']} 시작: {' '.join(cmd)}"], maxlen=200)
 
     agent_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     agent_env["GWANJONG_AGENT_ID"] = agent_id
@@ -796,7 +823,7 @@ async def handle_api_agent_stop(request: web.Request) -> web.Response:
 
 async def handle_api_agent_logs(request: web.Request) -> web.Response:
     agent_id = request.match_info["agent_id"]
-    logs = _agent_logs.get(agent_id, [])
+    logs = list(_agent_logs.get(agent_id, []))
     return web.json_response({"logs": logs[-100:], "total": len(logs)})
 
 
@@ -821,9 +848,43 @@ async def _on_startup(app: web.Application) -> None:
         conn.close()
 
 
+async def _on_shutdown(app: web.Application) -> None:
+    """Gracefully terminate all daemon/agent subprocesses on shutdown."""
+    procs_to_kill: list[tuple[str, asyncio.subprocess.Process]] = []
+
+    global _daemon_proc
+    if _daemon_proc and _daemon_proc.returncode is None:
+        procs_to_kill.append(("daemon", _daemon_proc))
+
+    for agent_id, proc in _agent_daemons.items():
+        if proc.returncode is None:
+            procs_to_kill.append((f"agent:{agent_id}", proc))
+
+    if not procs_to_kill:
+        return
+
+    logger.info("Shutdown: %d개 서브프로세스 종료 중", len(procs_to_kill))
+    for label, proc in procs_to_kill:
+        proc.terminate()
+
+    # 모두 종료 대기 (최대 5초)
+    for label, proc in procs_to_kill:
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+            logger.info("Shutdown: %s (PID %d) 종료됨", label, proc.pid)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            logger.warning("Shutdown: %s (PID %d) 강제 종료", label, proc.pid)
+
+    _daemon_proc = None
+    _agent_daemons.clear()
+
+
 def create_app() -> web.Application:
     app = web.Application()
     app.on_startup.append(_on_startup)
+    app.on_shutdown.append(_on_shutdown)
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/summary", handle_api_summary)
     # Daemon control

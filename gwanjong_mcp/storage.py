@@ -10,11 +10,14 @@ DB_PATH = Path(os.getenv("GWANJONG_DB_PATH", str(Path.home() / ".gwanjong" / "me
 
 
 def get_db(db_path: Path | None = None) -> sqlite3.Connection:
-    """Open a SQLite connection with row access enabled."""
+    """Open a SQLite connection with WAL mode and row access enabled."""
     resolved = db_path or DB_PATH
     resolved.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(resolved))
     conn.row_factory = sqlite3.Row
+    # WAL 모드: 동시 read/write 안정성 확보 (dashboard + daemon 병렬 접근)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
@@ -253,6 +256,31 @@ def ensure_experiments_table(conn: sqlite3.Connection) -> None:
             result_json TEXT NOT NULL DEFAULT '{}',
             created_at TEXT NOT NULL
         )
+    """)
+    conn.commit()
+
+
+def ensure_indexes(conn: sqlite3.Connection) -> None:
+    """Create performance indexes for frequently queried columns."""
+    conn.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_actions_platform_ts
+            ON actions(platform, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_actions_post_url
+            ON actions(post_url);
+        CREATE INDEX IF NOT EXISTS idx_actions_agent_id
+            ON actions(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_seen_posts_platform
+            ON seen_posts(platform, acted);
+        CREATE INDEX IF NOT EXISTS idx_rate_log_platform_action_ts
+            ON rate_log(platform, action, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_rate_log_platform_status
+            ON rate_log(platform, status);
+        CREATE INDEX IF NOT EXISTS idx_approval_queue_status
+            ON approval_queue(status);
+        CREATE INDEX IF NOT EXISTS idx_replies_responded
+            ON replies(responded);
+        CREATE INDEX IF NOT EXISTS idx_scout_runs_created
+            ON scout_runs(created_at);
     """)
     conn.commit()
 

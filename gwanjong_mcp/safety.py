@@ -150,6 +150,22 @@ class Safety:
                 self.PLATFORM_BAN_MINUTES // 60,
             )
 
+    def get_banned_platforms(self) -> list[str]:
+        """Return list of currently banned platforms."""
+        now = datetime.now(timezone.utc).isoformat()
+        banned = []
+        expired = []
+        for platform, until in self._platform_banned_until.items():
+            if now < until:
+                banned.append(platform)
+            else:
+                expired.append(platform)
+        # 만료된 차단 정리
+        for p in expired:
+            del self._platform_banned_until[p]
+            self._consecutive_fails.pop(p, None)
+        return banned
+
     def _ban_remaining_hours(self, platform: str) -> int:
         banned_until = self._platform_banned_until.get(platform, "")
         if not banned_until:

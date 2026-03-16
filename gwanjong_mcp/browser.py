@@ -37,6 +37,7 @@ async def is_logged_in(context: BrowserContext) -> bool:
         login_link = page.locator("a[href*='/enter']", has_text="Log in")
         return not await login_link.is_visible(timeout=3000)
     except Exception:
+        logger.warning("Dev.to 로그인 상태 확인 실패", exc_info=True)
         return False
     finally:
         await page.close()
