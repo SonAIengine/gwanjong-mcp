@@ -613,6 +613,9 @@ PLATFORM_ACTIONS: dict[str, list[str]] = {
     "reddit": ["comment", "upvote"],  # 댓글만 (자기홍보 금지, post 차단)
     "github_discussions": ["comment", "post", "upvote"],  # OSS/repo discussion 참여
     "discourse": ["comment", "post", "upvote"],  # 포럼 답변 + 독립 topic 작성
+    "mastodon": ["comment", "post", "upvote"],  # 리플 + 포스트 + 즐겨찾기
+    "hackernews": ["comment", "upvote"],  # 댓글 + 업보트 (post는 신중하게)
+    "stackoverflow": ["comment", "upvote"],  # 답변 + 업보트 (post=질문은 제한)
 }
 
 

@@ -44,6 +44,27 @@ DEFAULT_LIMITS: dict[str, PlatformLimit] = {
         max_upvotes_per_day=10,
         min_interval_minutes=5,
     ),
+    "mastodon": PlatformLimit(
+        "mastodon",
+        max_comments_per_day=8,
+        max_posts_per_day=2,
+        max_upvotes_per_day=10,
+        min_interval_minutes=5,
+    ),
+    "hackernews": PlatformLimit(
+        "hackernews",
+        max_comments_per_day=5,
+        max_posts_per_day=1,
+        max_upvotes_per_day=10,
+        min_interval_minutes=10,
+    ),
+    "stackoverflow": PlatformLimit(
+        "stackoverflow",
+        max_comments_per_day=5,
+        max_posts_per_day=1,
+        max_upvotes_per_day=10,
+        min_interval_minutes=10,
+    ),
 }
 
 PLATFORMS = list(DEFAULT_LIMITS)
