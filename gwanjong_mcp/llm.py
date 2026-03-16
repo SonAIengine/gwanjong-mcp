@@ -178,6 +178,10 @@ PERSONA:
 AVOID:
 {avoid}
 
+LANGUAGE:
+Detect the language of the post title and body. Write your {output_label} in the SAME language.
+If the post is in English, write in English. If in Korean, write in Korean. Never mix languages unless the post does.
+
 Output ONLY the {output_label} text. No quotes, no labels, no explanation."""
 
     def _build_user_prompt(self, ctx: DraftContext, action: str = "comment") -> str:
