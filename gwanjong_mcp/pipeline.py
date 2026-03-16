@@ -218,11 +218,21 @@ async def scout(
     try:
         conn = get_db()
         try:
-            # 이미 활동한 게시글 URL과 매칭되는 post의 author는 all_posts에서 찾기
+            # 1) actions.author 컬럼에서 직접 조회 (최근 30일)
+            for r in conn.execute(
+                "SELECT DISTINCT LOWER(author) FROM actions "
+                "WHERE action = 'comment' AND author IS NOT NULL AND author != '' "
+                "AND timestamp >= date('now', '-30 days')"
+            ).fetchall():
+                seen_authors.add(r[0])
+
+            # 2) author 컬럼이 아직 비어있는 레거시 데이터 — URL 기반 fallback
             acted_urls = {
                 r[0].split("#")[0]
                 for r in conn.execute(
-                    "SELECT DISTINCT post_url FROM actions WHERE action = 'comment' AND post_url != ''"
+                    "SELECT DISTINCT post_url FROM actions "
+                    "WHERE action = 'comment' AND post_url != '' "
+                    "AND (author IS NULL OR author = '')"
                 ).fetchall()
             }
             for post in all_posts:
@@ -349,6 +359,7 @@ async def draft(
         title=post.title,
         body_summary=post.body[:500] if post.body else "",
         post_id=opportunity.post_id,
+        author=post.author,
         top_comments=[c.body[:200] for c in comments[:5]],
         tone=tone,
         suggested_approach=approach,
@@ -506,6 +517,7 @@ async def strike(
                 "record": record,
                 "response": response,
                 "content": content,
+                "author": context.author,
             }
             if campaign_id:
                 after_data["campaign_id"] = campaign_id
@@ -561,6 +573,7 @@ async def strike(
             "record": record,
             "response": response,
             "content": content,
+            "author": context.author,
         }
         if campaign_id:
             after_data2["campaign_id"] = campaign_id

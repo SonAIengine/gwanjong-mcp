@@ -31,6 +31,7 @@ class DraftContext:
     title: str
     body_summary: str
     post_id: str = ""
+    author: str = ""
     top_comments: list[str] = field(default_factory=list)
     tone: str = ""
     suggested_approach: str = "comment"

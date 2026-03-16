@@ -111,9 +111,10 @@ class Memory:
             campaign_id = event.data.get("campaign_id", "")
             utm_url = event.data.get("utm_url", "")
             agent_id = os.getenv("GWANJONG_AGENT_ID", "") or None
+            author = event.data.get("author", "") or None
 
             conn.execute(
-                "INSERT INTO actions (opportunity_id, post_id, platform, post_url, action, content, timestamp, campaign_id, utm_url, agent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO actions (opportunity_id, post_id, platform, post_url, action, content, timestamp, campaign_id, utm_url, agent_id, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     opp_id,
                     post_id,
@@ -125,6 +126,7 @@ class Memory:
                     campaign_id or None,
                     utm_url or None,
                     agent_id,
+                    author,
                 ),
             )
             # seen_posts에 활동 표시 (URL 정규화 — #comments 등 제거)

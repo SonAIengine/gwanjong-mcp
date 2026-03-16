@@ -44,6 +44,7 @@ def ensure_actions_tables(conn: sqlite3.Connection) -> None:
         );
     """)
     _ensure_column(conn, "actions", "post_id", "TEXT")
+    _ensure_column(conn, "actions", "author", "TEXT")
     conn.commit()
 
 
@@ -269,6 +270,8 @@ def ensure_indexes(conn: sqlite3.Connection) -> None:
             ON actions(post_url);
         CREATE INDEX IF NOT EXISTS idx_actions_agent_id
             ON actions(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_actions_author
+            ON actions(author);
         CREATE INDEX IF NOT EXISTS idx_seen_posts_platform
             ON seen_posts(platform, acted);
         CREATE INDEX IF NOT EXISTS idx_rate_log_platform_action_ts
