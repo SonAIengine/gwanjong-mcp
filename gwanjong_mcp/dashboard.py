@@ -192,7 +192,9 @@ def get_summary() -> dict:
         week_ago = (now - timedelta(days=7)).strftime("%Y-%m-%d")
 
         # ── Platform stats (배치 쿼리: 플랫폼별 개별 쿼리 → 2개 집계 쿼리) ──
-        action_stats: dict[str, dict] = {p: {"today": 0, "week": 0, "total": 0, "actions_week": {}} for p in PLATFORMS}
+        action_stats: dict[str, dict] = {
+            p: {"today": 0, "week": 0, "total": 0, "actions_week": {}} for p in PLATFORMS
+        }
         for row in conn.execute(
             """SELECT platform,
                       SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as today_cnt,
@@ -216,7 +218,9 @@ def get_summary() -> dict:
                 action_stats[p]["actions_week"][row["action"]] = row["cnt"]
 
         reply_counts: dict[str, int] = {}
-        for row in conn.execute("SELECT platform, COUNT(*) as cnt FROM replies GROUP BY platform").fetchall():
+        for row in conn.execute(
+            "SELECT platform, COUNT(*) as cnt FROM replies GROUP BY platform"
+        ).fetchall():
             reply_counts[row["platform"]] = row["cnt"]
 
         platforms = [
@@ -762,7 +766,9 @@ async def handle_api_agent_start(request: web.Request) -> web.Response:
     if agent.get("dry_run", 0):
         cmd.append("--dry-run")
 
-    _agent_logs[agent_id] = collections.deque([f"[sys] {agent['name']} 시작: {' '.join(cmd)}"], maxlen=200)
+    _agent_logs[agent_id] = collections.deque(
+        [f"[sys] {agent['name']} 시작: {' '.join(cmd)}"], maxlen=200
+    )
 
     agent_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     agent_env["GWANJONG_AGENT_ID"] = agent_id

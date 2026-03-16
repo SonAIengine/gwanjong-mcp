@@ -277,7 +277,9 @@ class AutonomousLoop:
         try:
             record, response = await self._retry(
                 lambda _ctx=ctx, _act=action, _cont=content: pipeline.strike(
-                    _ctx, _act, _cont,
+                    _ctx,
+                    _act,
+                    _cont,
                     bus=self.bus,
                     campaign_id=self.config.campaign_id,
                 ),
@@ -442,10 +444,14 @@ class AutonomousLoop:
             except Exception as e:
                 last_exc = e
                 if attempt < max_retries:
-                    delay = base_delay * (2 ** attempt)
+                    delay = base_delay * (2**attempt)
                     logger.warning(
                         "%s 실패 (시도 %d/%d), %.0f초 후 재시도: %s",
-                        label, attempt + 1, max_retries + 1, delay, e,
+                        label,
+                        attempt + 1,
+                        max_retries + 1,
+                        delay,
+                        e,
                     )
                     await asyncio.sleep(delay)
         raise last_exc  # type: ignore[misc]

@@ -15,7 +15,16 @@ from .events import EventBus
 from .llm import CommentGenerator
 from .memory import Memory
 from .safety import Safety
-from .storage import ensure_indexes, get_db
+from .storage import (
+    ensure_actions_tables,
+    ensure_approval_queue_table,
+    ensure_campaigns_table,
+    ensure_indexes,
+    ensure_rate_log_table,
+    ensure_replies_table,
+    ensure_scout_runs_table,
+    get_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +126,14 @@ def main() -> None:
         campaign_id=args.campaign or "",
     )
 
-    # DB 인덱스 보장 (데몬 시작 시 1회)
+    # DB 테이블 + 인덱스 보장 (데몬 시작 시 1회)
     _init_conn = get_db()
+    ensure_actions_tables(_init_conn)
+    ensure_rate_log_table(_init_conn)
+    ensure_replies_table(_init_conn)
+    ensure_scout_runs_table(_init_conn)
+    ensure_approval_queue_table(_init_conn)
+    ensure_campaigns_table(_init_conn)
     ensure_indexes(_init_conn)
     _init_conn.close()
 
